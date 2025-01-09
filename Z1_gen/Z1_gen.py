@@ -8,7 +8,7 @@ import numpy as np
 import sys, argparse, os
 from PIL import Image
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 def main(argv=None):
     def parse_argv(argv):
@@ -42,11 +42,10 @@ def main(argv=None):
     z1_tile = np.zeros((n,n), np.uint8)
 
     # we need to select n(n-2) values to fill the rest of the slots
-    # we have wiggle room of 255/(n-1)*(n-2) to 254
-    # so, shift each row's values by this amount divided by n
-    v_shift_start = 255/(n-1)*(n-2)
-    v_shift_end = 254
-    v_shift = (v_shift_end - v_shift_start) / n
+    # we have wiggle room of 1 to 254
+    # so, distribute these values among the free slots
+    v = np.arange(1,((n*(n-2))+1)).reshape(((n-2),n)).T
+    v = np.around((254/(n*(n-2)))*v)
 
     for i in range(n):
         for j in range(n):
@@ -57,7 +56,6 @@ def main(argv=None):
                 threshold = np.floor((n-1)/2)
                 k = (m*i+j)%n
                 u = k - threshold
-
                 if u <= 0: t = -2*u
                 if 0 < u <= threshold: t = 2*u - 1
                 if u > threshold: t = n-1
@@ -67,7 +65,7 @@ def main(argv=None):
             elif t == 0:
                 z1_tile[i,j] = 0
             else:
-                z1_tile[i,j] = np.uint8(t * 255/(n-1) + v_shift*i)
+                z1_tile[i,j] = v[i,int(t-1)]
 
     pil_image = Image.fromarray(z1_tile)
     pil_image.save(args.output, format="PNG", optimize=True)
