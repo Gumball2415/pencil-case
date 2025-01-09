@@ -6,7 +6,7 @@ generates a dither mask based on Constrained Image Binarization for Jacquard Fab
 
 "Z1" is the name given to the stepping dither mask proposed by Toyoura et al, originally used for generating fabric patterns out of input grayscale images. The pattern, shared by ToffiRola on the NESDev server, was found to be aesthetically pleasing and doesn't exacerbate composite crosstalk unlike regular checkerboard dithering.
 
-## [License](LICENSE.txt)
+## [License](../LICENSE_MIT-0.txt)
 
 This implementation is licensed under MIT-0.
 Copyright 2024 Persune.
