@@ -6,7 +6,7 @@ import numpy as np
 import sys, argparse, os
 from PIL import Image, ImageColor, ImagePalette
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 # http://brucelindbloom.com/index.html?Math.html
 def srgb_to_xyz(rgb_array):
@@ -109,6 +109,12 @@ def main(argv=None):
             "-CIE94",
             help="compares colors in CIE94 Delta-E. default is False",
             action="store_true")
+        parser.add_argument(
+            "-gam",
+            "--gamma",
+            help="EOTF gamma setting. default is 2.2",
+            type=np.float64,
+            default=2.2)
         parser.add_argument(
             "--CIE94-tex",
             help="sets application constants for CIE94 Delta-E to textile mode. default is False.",
