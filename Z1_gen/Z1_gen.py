@@ -8,7 +8,44 @@ import numpy as np
 import sys, argparse, os
 from PIL import Image
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
+
+# 4.1 ジャカード織物用ディザマスクの生成
+def generate_dither_mask(n: int, m: int, saw=False):
+    z1_tile = np.zeros((n,n), np.uint8)
+
+    # we need to select n(n-2) values to fill the rest of the slots
+    # we have wiggle room of 1 to 254
+    # so, distribute these values among the free slots
+    v = np.arange(1,((n*(n-2))+1)).reshape(((n-2),n)).T
+    v = np.around((254/(n*(n-2)))*v)
+    threshold = np.floor((n-1)/2)
+
+    for i in range(n):
+        # scramble v index
+        u = i%n - threshold
+        if u <= 0: v_index = int(-2*u)
+        if 0 < u <= threshold: v_index = int(2*u - 1)
+        if u > threshold: v_index = int(n-1)
+        
+        for j in range(n):
+            # eq 7
+            if saw:
+                t = (m*i+j)%n
+            else:
+                k = (m*i+j)%n
+                u = k - threshold
+                if u <= 0: t = int(-2*u)
+                if 0 < u <= threshold: t = int(2*u - 1)
+                if u > threshold: t = int(n-1)
+
+            if t == n-1:
+                z1_tile[i,j] = 255
+            elif t == 0:
+                z1_tile[i,j] = 0
+            else:
+                z1_tile[i,j] = v[v_index,(t-1)]
+    return z1_tile
 
 def main(argv=None):
     def parse_argv(argv):
@@ -35,39 +72,7 @@ def main(argv=None):
         return parser.parse_args(argv[1:])
     args = parse_argv(argv or sys.argv)
 
-    # 4.1 ジャカード織物用ディザマスクの生成
-    n = args.n
-    m = args.m
-
-    z1_tile = np.zeros((n,n), np.uint8)
-
-    # we need to select n(n-2) values to fill the rest of the slots
-    # we have wiggle room of 1 to 254
-    # so, distribute these values among the free slots
-    v = np.arange(1,((n*(n-2))+1)).reshape(((n-2),n)).T
-    v = np.around((254/(n*(n-2)))*v)
-
-    for i in range(n):
-        for j in range(n):
-            # eq 7
-            if args.saw:
-                t = (m*i+j)%n
-            else:
-                threshold = np.floor((n-1)/2)
-                k = (m*i+j)%n
-                u = k - threshold
-                if u <= 0: t = -2*u
-                if 0 < u <= threshold: t = 2*u - 1
-                if u > threshold: t = n-1
-
-            if t == n-1:
-                z1_tile[i,j] = 255
-            elif t == 0:
-                z1_tile[i,j] = 0
-            else:
-                z1_tile[i,j] = v[i,int(t-1)]
-
-    pil_image = Image.fromarray(z1_tile)
+    pil_image = Image.fromarray(generate_dither_mask(args.n, args.m, args.saw))
     pil_image.save(args.output, format="PNG", optimize=True)
 
 if __name__ == '__main__':
