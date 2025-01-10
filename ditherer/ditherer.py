@@ -146,6 +146,8 @@ def main(argv=None):
     # palette = [value for sublist in palette for value in sublist]
 
     with Image.open(args.mask) as immask:
+        if immask.mode != "L":
+            sys.exit("dither mask is not 8-bit grayscale!")
         dithermask = np.array(immask, dtype=np.float64)
         with Image.open(args.input) as im:
             imarr = np.array(im, dtype=np.float64)
