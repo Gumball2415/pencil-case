@@ -150,6 +150,8 @@ def main(argv=None):
             sys.exit("dither mask is not 8-bit grayscale!")
         dithermask = np.array(immask, dtype=np.float64)
         with Image.open(args.input) as im:
+            # convert im to RGB only
+            im = im.convert(mode="RGB")
             imarr = np.array(im, dtype=np.float64)
             imout = np.zeros(imarr.shape, dtype=np.float64)
             # rescale to 0-1
@@ -161,7 +163,7 @@ def main(argv=None):
             for y in range(imarr.shape[0]):
                 for x in range(imarr.shape[1]):
                     for c in range(imarr.shape[2]):
-                        imarr[y,x,c] = min(max(imarr[y,x,c]**(2.2), 0.0), 1.0)
+                        imarr[y,x,c] = min(max(imarr[y,x,c]**(args.gamma), 0.0), 1.0)
             # standard ordered dithering
             # https://bisqwit.iki.fi/story/howto/dither/jy/#Algorithms
             for y in range(imarr.shape[0]):
