@@ -153,7 +153,7 @@ def main(argv=None):
             sys.exit("dither mask is not 8-bit grayscale!")
 
         dithermask = np.array(immask, dtype=np.float64)
-        n = dithermask.shape[0]
+        d_x, d_y = dithermask.shape
 
         with Image.open(args.input) as im:
             # convert im to RGB only
@@ -178,7 +178,7 @@ def main(argv=None):
             for y in range(imout.shape[0]):
                 for x in range(imout.shape[1]):
                     px_in = imarr[y,x]
-                    px_mask = dithermask[(y%n),(x%n)]
+                    px_mask = dithermask[(y%d_y),(x%d_x)]
                     px_attempt = px_in + (px_mask * args.threshold)
                     index = deltae(px_attempt, palette, args)
                     imout[y,x] = palette[index]
