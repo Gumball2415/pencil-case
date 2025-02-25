@@ -11,9 +11,7 @@ equations from http://brucelindbloom.com/index.html?Math.html
 
 ## Example
 
-![An image of a Famicom being illuminated by a TV](fami.png)
-
-![An image of a Famicom being illuminated by a TV](fami_dither.png)
+![An image of a Famicom being illuminated by a TV](fami.png)![An image of a Famicom being illuminated by a TV](fami_dither.png)
 
 This image was generated with the following arguments:
 
