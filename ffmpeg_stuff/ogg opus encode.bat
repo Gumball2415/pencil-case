@@ -1,1 +1,0 @@
-ffmpeg -i %1 -c:a libopus -b:a 128k -vbr on -compression_level 10 -frame_duration 60 "%~dp1%~n1.opus.ogg"

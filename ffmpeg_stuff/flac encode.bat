@@ -1,1 +1,1 @@
-ffmpeg -i %1 "%~dp1%~n1.flac"
+ffmpeg -i %1 -vn "%~dp1%~n1.flac" -y
