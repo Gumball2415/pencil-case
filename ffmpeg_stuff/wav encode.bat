@@ -1,3 +1,3 @@
-ffmpeg -i -vn %1 "%~dp1%~n1.wav" -y
+ffmpeg -y -i %1 -vn "%~dp1%~n1_reencode.wav"
 echo 
 pause
