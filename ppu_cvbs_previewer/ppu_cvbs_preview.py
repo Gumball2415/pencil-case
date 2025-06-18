@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -88,6 +88,15 @@ def parse_argv(argv):
         "--full_resolution",
         action="store_true",
         help="store the full framebuffer")
+    parser.add_argument(
+        "-frames",
+        type = int,
+        help="render x consecutive frames. range: 1-3. default = 1",
+        default=1)
+    parser.add_argument(
+        "-noskipdot",
+        action="store_true",
+        help="turns off skipped dot rendering. equivalent to rendering on 2C02s")
 
     return parser.parse_args(argv[1:])
 
@@ -442,23 +451,26 @@ def main(argv=None):
     if args.raw_ppu_px: raw_ppu = parse_raw_ppu_px(args.input)
     else: raw_ppu = parse_indexed_png(args.input, args.palette)
 
-    out, _ = encode_frame(raw_ppu,
-        args.ppu,
-        args.color_clock_phase,
-        args.phase_distortion,
-        False,
-        args.delay_line_filter,
-        args.full_resolution,
-        args.box_filter,
-        args.debug
-    )
+    phase = args.color_clock_phase
 
-    with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
-    # scale image
-        if not (args.full_resolution or args.debug):
-            imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-            imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
-        imageout.save(f"{os.path.splitext(args.input)[0]}_ppucbvs_ph_{args.color_clock_phase}.png")
+    for frame in range(args.frames):
+        out, nextphase = encode_frame(raw_ppu,
+            args.ppu,
+            phase,
+            args.phase_distortion,
+            (not args.noskipdot),
+            args.delay_line_filter,
+            args.full_resolution,
+            args.box_filter,
+            args.debug
+        )
+        with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
+        # scale image
+            if not (args.full_resolution or args.debug):
+                imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
+                imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
+            imageout.save(f"{os.path.splitext(args.input)[0]}_ppucbvs_ph_{phase}.png")
+        phase = nextphase
 
     return
 

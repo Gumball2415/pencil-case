@@ -12,6 +12,7 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}] [-box]
                            [-phd PHASE_DISTORTION] [-comb] [-full]
+                           [-frames FRAMES] [-noskipdot]
                            input
 
 NES PPU composite video shader previewer
@@ -45,8 +46,24 @@ options:
                         single-line decoding
   -full, --full_resolution
                         store the full framebuffer
+  -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
+  -noskipdot            turns off skipped dot rendering. equivalent to
+                        rendering on 2C02s
 
-version 0.1.0
+version 0.1.1
+```
+
+## Requirements
+
+- See `requirements.txt` for details.
+- i'm a bit too lazy to search up the minimum version requirements so this is what i had
+
+### This script requires:
+
+```python
+numpy==2.3.0
+pillow==11.2.1
+scipy==1.15.3
 ```
 
 ## Examples
@@ -58,6 +75,11 @@ version 0.1.0
 ### Solstice
 
 [Solstice](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/solstice.mp4)
+
+### SMB
+
+[SMB](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4)
+
 
 ### Comb + Box filter
 
@@ -82,4 +104,4 @@ version 0.1.0
 ## [License](../LICENSE_MIT-0.txt)
 
 This implementation is licensed under MIT-0.
-Copyright 2024 Persune.
+Copyright 2025 Persune.
