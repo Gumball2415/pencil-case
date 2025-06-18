@@ -1,1 +1,5 @@
 /.obsidian
+*vscode
+*_env
+/ppu_cvbs_previewer/*_ppucbvs_*
+*__pycache__
