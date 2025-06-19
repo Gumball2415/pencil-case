@@ -71,38 +71,42 @@ scipy==1.15.3
 
 ## Examples
 
+- animated examples assembled from individual frames using FFmpeg.
+
 ### 3-phase dot crawl (averaged and animated)
 
 ![3-phase dot crawl averaged](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
-![3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
+
+<video aria-label="3-phase dot crawl animated" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ### Solstice
 
-![Solstice](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/solstice.mp4)
+<video aria-label="Solstice" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/solstice.mp4" controls="controls" style="max-width: 480px;"></video>
+
 
 ### SMB
 
-![SMB](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4)
+<video aria-label="SMB" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ### Comb + Box filter
 
-![Comb + box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/rockman2.mp4)
+<video aria-label="Comb + box filter" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/rockman2.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ### PLUGE test
 
-![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
+<video aria-label="PLUGE" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ### Comb filter tests for PAL and NTSC
 
 ![Comb filter test for PAL](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_PAL.png)
 
-![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.mp4)
+<video aria-label="Comb filter test for NTSC" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ### Sharpness tests for comb and box filter
 
-![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
+<video aria-label="Sharpness test: Comb filter" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4" controls="controls" style="max-width: 480px;"></video>
 
-![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4)
+<video aria-label="Sharpness test: Box filter" src="https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4" controls="controls" style="max-width: 480px;"></video>
 
 ## [License](../LICENSE_MIT-0.txt)
 
