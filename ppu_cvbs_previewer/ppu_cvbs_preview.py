@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -76,13 +76,18 @@ def parse_argv(argv):
         "-phd",
         "--phase_distortion",
         type = np.float64,
-        help = "amount of voltage-dependent impedance for RC lowpass, where RC = \"amount * (level/composite_white) * 1e-8\". this will also desaturate and hue shift the resulting colors nonlinearly. a value of 4 very roughly corresponds to a -5 degree delta per luma row. default = 0.0",
-        default = 0.0)
+        help = "amount of voltage-dependent impedance for RC lowpass, where RC = \"amount * (level/composite_white) * 1e-8\". this will also desaturate and hue shift the resulting colors nonlinearly. a value of 4 very roughly corresponds to a -5 degree delta per luma row. default = 4",
+        default = 4)
     parser.add_argument(
         "-comb",
         "--delay_line_filter",
         action = "store_true",
         help = "use 1D delay line comb filter decoding instead of single-line decoding")
+    parser.add_argument(
+        "-lcomb",
+        "--luma_delay_line",
+        action = "store_true",
+        help = "apply comb filter to isolate luma. does not apply on PAL decoding")
     parser.add_argument(
         "-full",
         "--full_resolution",
@@ -291,6 +296,7 @@ def encode_frame(raw_ppu,
     delay_line_filter = False,
     full_resolution = False,
     box_filter = False,
+    luma_delay_line = False,
     debug = False
 ):
     global is_odd_frame
@@ -355,6 +361,7 @@ def encode_frame(raw_ppu,
         # normalize blank/black
         cvbs_ppu -= ppu.composite_black
         YUV_line = np.zeros((r.SAMPLES_PER_SCANLINE, 3), dtype=np.float64)
+        chroma_line = cvbs_ppu
 
         # decode scanline
 
@@ -363,9 +370,10 @@ def encode_frame(raw_ppu,
         box_kernel = np.full(12, 1, dtype=np.float64)
         box_kernel /= np.sum(box_kernel)
         if box_filter:
-            chroma_line = cvbs_ppu - signal.convolve(cvbs_ppu, box_kernel, mode="same")
-        else:
-            chroma_line = signal.filtfilt(b_peak, a_peak, cvbs_ppu)
+            YUV_line[:, 0] = signal.convolve(cvbs_ppu, box_kernel, mode="same")
+            chroma_line = cvbs_ppu - YUV_line[:, 0]
+        elif not luma_delay_line:
+            chroma_line = signal.filtfilt(b_peak, a_peak, chroma_line)
 
         # seperate chroma bandwidth
         if delay_line_filter:
@@ -390,7 +398,6 @@ def encode_frame(raw_ppu,
                 u_line = v_line = (chroma_line - prev_line) / 2
                 # rotate chroma line to account for next line's phase shift
                 prev_line = np.append(chroma_line[-NEXT_SHIFT:],chroma_line[:-NEXT_SHIFT])
-                u_line = v_line
         else:
             u_line = v_line = chroma_line
 
@@ -404,6 +411,8 @@ def encode_frame(raw_ppu,
         else:
             cburst_shift = (-r.BEFORE_CBURST+3 + NEXT_SHIFT*2) % 12
         # hack!! i have no idea why the colors are offset with 2C07 combing but it seems related to starting phase.
+        # +0.5 because colorburst phase is defined as 135 degrees, 45 degrees offset from NTSC's 180 degrees.
+        # with this setting, hues match this image: https://forums.nesdev.org/viewtopic.php?p=133638#p133638
         t = np.arange(12) + cburst_shift - ((starting_phase + 0.5) if ppu_type == "2C07" else 0)
         U_decode = np.cos((2 * np.pi / 12 * t) - cburst_phase) * 2
         V_decode = np.sin((2 * np.pi / 12 * t) - cburst_phase) * (2 if ppu_type == "2C07" and alternate_line else -2)
@@ -419,7 +428,11 @@ def encode_frame(raw_ppu,
             out[scanline] = np.array([cvbs_ppu, YUV_line[:, 1], YUV_line[:, 2]]).T
         else:
             # separate luma bandwidth
-            YUV_line[:, 0] = cvbs_ppu - chroma_line
+            if luma_delay_line:
+                YUV_line[:, 0] = cvbs_ppu - v_line
+            elif not box_filter:    # we've already filtered luma
+                # "PAL officially apparently does not assume non-chroma content is luma" - lidnariq
+                YUV_line[:, 0] = cvbs_ppu - chroma_line
             if box_filter:
                 YUV_line[:, 1] = signal.convolve(YUV_line[:, 1], box_kernel, mode="same")
                 YUV_line[:, 2] = signal.convolve(YUV_line[:, 2], box_kernel, mode="same")
@@ -479,6 +492,7 @@ def main(argv=None):
             args.delay_line_filter,
             args.full_resolution,
             args.box_filter,
+            args.luma_delay_line,
             args.debug
         )
         frames.append((out, phase))

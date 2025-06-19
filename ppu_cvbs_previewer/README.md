@@ -11,7 +11,7 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 ```cmd
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}] [-box]
-                           [-phd PHASE_DISTORTION] [-comb] [-full]
+                           [-phd PHASE_DISTORTION] [-comb] [-lcomb] [-full]
                            [-frames FRAMES] [-avg] [-noskipdot]
                            input
 
@@ -40,10 +40,13 @@ options:
                         this will also desaturate and hue shift the resulting
                         colors nonlinearly. a value of 4 very roughly
                         corresponds to a -5 degree delta per luma row. default
-                        = 0.0
+                        = 4
   -comb, --delay_line_filter
                         use 1D delay line comb filter decoding instead of
                         single-line decoding
+  -lcomb, --luma_delay_line
+                        apply comb filter to isolate luma. does not apply on
+                        PAL decoding
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
@@ -53,7 +56,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.1.2
+version 0.1.3
 ```
 
 ## Requirements
@@ -84,13 +87,15 @@ scipy==1.15.3
 
 ![Solstice](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/solstice.mp4)
 
-### SMB
+### SMB (box filter comparison)
 
-![SMB](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4)
+![SMB no box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4)
 
-### Comb + Box filter
+![SMB with box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb_box.mp4)
 
-![Comb + box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/rockman2.mp4)
+### Luma comb filter
+
+![Luma comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/rockman2.mp4)
 
 ### PLUGE test
 
