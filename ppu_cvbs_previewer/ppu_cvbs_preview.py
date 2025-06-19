@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -93,6 +93,11 @@ def parse_argv(argv):
         type = int,
         help="render x consecutive frames. range: 1-3. default = 1",
         default=1)
+    parser.add_argument(
+        "-avg",
+        "--average",
+        action="store_true",
+        help="use with -frames argument. averages all rendered frames into one. will save output as input_ppucbvs_ph_avg_x.png")
     parser.add_argument(
         "-noskipdot",
         action="store_true",
@@ -444,6 +449,14 @@ def encode_frame(raw_ppu,
 
     return out, next_phase
 
+def save_image(input: str, out, phases, full_resolution = False, debug = False):
+    with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
+    # scale image
+        if not (full_resolution or debug):
+            imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
+            imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
+        imageout.save(f"{os.path.splitext(input)[0]}_ppucbvs_ph_{phases}.png")
+
 def main(argv=None):
     args = parse_argv(argv or sys.argv)
     # load input image and parse it for indices
@@ -452,6 +465,10 @@ def main(argv=None):
     else: raw_ppu = parse_indexed_png(args.input, args.palette)
 
     phase = args.color_clock_phase
+
+    avg = args.average and args.frames > 1
+
+    frames = []
 
     for frame in range(args.frames):
         out, nextphase = encode_frame(raw_ppu,
@@ -464,13 +481,19 @@ def main(argv=None):
             args.box_filter,
             args.debug
         )
-        with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
-        # scale image
-            if not (args.full_resolution or args.debug):
-                imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-                imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
-            imageout.save(f"{os.path.splitext(args.input)[0]}_ppucbvs_ph_{phase}.png")
+        frames.append((out, phase))
+
+        if not avg:
+            save_image(args.input, out, phase, args.full_resolution, args.debug)
         phase = nextphase
+
+    if avg:
+        images, phases = zip(*frames)
+
+        images = np.array(images)
+        out = np.average(images, axis=0)
+        save_image(args.input, out, phases, args.full_resolution, args.debug)
+
 
     return
 

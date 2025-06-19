@@ -1,7 +1,7 @@
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}] [-box]
                            [-phd PHASE_DISTORTION] [-comb] [-full]
-                           [-frames FRAMES] [-noskipdot]
+                           [-frames FRAMES] [-avg] [-noskipdot]
                            input
 
 NES PPU composite video shader previewer
@@ -36,7 +36,10 @@ options:
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
+  -avg, --average       use with -frames argument. averages all rendered
+                        frames into one. will save output as
+                        input_ppucbvs_ph_avg_x.png
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.1.1
+version 0.1.2
