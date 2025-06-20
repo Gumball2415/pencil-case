@@ -52,11 +52,11 @@ options:
   -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
   -avg, --average       use with -frames argument. averages all rendered
                         frames into one. will save output as
-                        input_ppucbvs_ph_avg_x.png
+                        input_ppucvbs_ph_avg_x.png
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.1.3
+version 0.1.4
 ```
 
 ## Requirements
@@ -115,5 +115,7 @@ scipy==1.15.3
 
 ## [License](../LICENSE_MIT-0.txt)
 
-This implementation is licensed under MIT-0.
+This implementation is licensed under MIT-0.\
 Copyright 2025 Persune.
+
+Images under fair use and are for filter demonstration purposes only. All rights reserved to their respective copyright owners.

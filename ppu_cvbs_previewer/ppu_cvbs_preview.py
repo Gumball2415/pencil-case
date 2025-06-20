@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -102,7 +102,7 @@ def parse_argv(argv):
         "-avg",
         "--average",
         action="store_true",
-        help="use with -frames argument. averages all rendered frames into one. will save output as input_ppucbvs_ph_avg_x.png")
+        help="use with -frames argument. averages all rendered frames into one. will save output as input_ppucvbs_ph_avg_x.png")
     parser.add_argument(
         "-noskipdot",
         action="store_true",
@@ -468,7 +468,7 @@ def save_image(input: str, out, phases, full_resolution = False, debug = False):
         if not (full_resolution or debug):
             imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
             imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
-        imageout.save(f"{os.path.splitext(input)[0]}_ppucbvs_ph_{phases}.png")
+        imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
 
 def main(argv=None):
     args = parse_argv(argv or sys.argv)
