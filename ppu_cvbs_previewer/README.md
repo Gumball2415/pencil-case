@@ -10,8 +10,9 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 
 ```cmd
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
-                           [-pal PALETTE] [-ppu {2C02,2C07}] [-box]
-                           [-phd PHASE_DISTORTION] [-comb] [-lcomb] [-full]
+                           [-pal PALETTE] [-ppu {2C02,2C07}]
+                           [-phd PHASE_DISTORTION]
+                           [-filt {notch,box,2-line,3-line}] [-full]
                            [-frames FRAMES] [-avg] [-noskipdot]
                            input
 
@@ -33,7 +34,6 @@ options:
                         input 192-byte .pal file
   -ppu {2C02,2C07}, --ppu {2C02,2C07}
                         PPU chip used for generating colors. default = 2C02
-  -box, --box_filter    use box filter to decode luma and chroma.
   -phd PHASE_DISTORTION, --phase_distortion PHASE_DISTORTION
                         amount of voltage-dependent impedance for RC lowpass,
                         where RC = "amount * (level/composite_white) * 1e-8".
@@ -41,12 +41,9 @@ options:
                         colors nonlinearly. a value of 4 very roughly
                         corresponds to a -5 degree delta per luma row. default
                         = 4
-  -comb, --delay_line_filter
-                        use 1D delay line comb filter decoding instead of
-                        single-line decoding
-  -lcomb, --luma_delay_line
-                        apply comb filter to isolate luma. does not apply on
-                        PAL decoding
+  -filt {notch,box,2-line,3-line}, --decoding_filter {notch,box,2-line,3-line}
+                        choose decoding method to filter chroma and luma.
+                        default = notch.
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
@@ -56,7 +53,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.1.4
+version 0.2.0
 ```
 
 ## Requirements
@@ -83,20 +80,6 @@ scipy==1.15.3
 
 ![3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
 
-### Solstice
-
-![Solstice](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/solstice.mp4)
-
-### SMB (box filter comparison)
-
-![SMB no box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb.mp4)
-
-![SMB with box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/smb_box.mp4)
-
-### Luma comb filter
-
-![Luma comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/rockman2.mp4)
-
 ### PLUGE test
 
 ![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
@@ -112,6 +95,14 @@ scipy==1.15.3
 ![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
 
 ![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4)
+
+### Crosstalk tests
+
+![Crosstalk test: Notch filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
+
+![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
+
+![Crosstalk test: 3-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_3line.mp4)
 
 ## [License](../LICENSE_MIT-0.txt)
 

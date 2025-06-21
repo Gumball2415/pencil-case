@@ -13,7 +13,7 @@ else
 	PY := python3
 endif
 
-animlist := addie solstice rockman2 240pee 240pee_2_NTSC 240pee_3_comb 240pee_3_box smb smb_box
+animlist := addie 240pee 240pee_2_NTSC 240pee_3_comb 240pee_3_box dither dither_2line dither_3line
 
 animlist := $(foreach o, ${animlist}, ${examples_dir}/${o}.mp4)
 
@@ -26,14 +26,14 @@ clean:
 	${RM} -r *_ppucvbs_ph_*.png
 
 # addie.png:			squeak! averaging test
-# solstice.mp4:			lidnariq says it looks cool
-# rockman2.mp4:			another example; luma comb filter
+# dither.mp4			crosstalk tests
+# dither_2line.mp4:		2-line comb filter
+# dither_3line.mp4:		2-line comb filter
 # 240pee.mp4:			PLUGE
 # 240pee_2_PAL.png:		comb filter test for PAL and NTSC
 # 240pee_2_NTSC.mp4:	comb filter test for PAL and NTSC
 # 240pee_3_comb.mp4:	sharpness tests
 # 240pee_3_comb.mp4:	sharpness tests
-# smb.mp4:				defaults
 
 ${examples_dir}:
 	mkdir $@ -p
@@ -66,53 +66,59 @@ ${examples_dir}/240pee_3_box.mp4: 240pee_3_ppucvbs_ph_0_box.png
 	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
-${examples_dir}/smb_box.mp4: smb_box_ppucvbs_ph_0.png
-	ffmpeg -framerate 60 -y -pattern_type glob -i '${notdir ${basename $@}}_ppucvbs_ph_*.png' \
+${examples_dir}/dither_2line.mp4: dither_ppucvbs_ph_0_2line.png
+	ffmpeg -framerate 60 -y -pattern_type glob -i 'dither_ppucvbs_ph_*_2line*.png' \
+	-t 2 \
+	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
+	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
+
+${examples_dir}/dither_3line.mp4: dither_ppucvbs_ph_0_3line.png
+	ffmpeg -framerate 60 -y -pattern_type glob -i 'dither_ppucvbs_ph_*_3line*.png' \
 	-t 2 \
 	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
 	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
 ${examples_dir}/addie.png: addie.bin
-	${PY} ppu_cvbs_preview.py -raw -comb -frames 3 -avg -noskipdot $<
+	${PY} ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -avg -noskipdot $<
 	mv "addie_ppucvbs_ph_(0, 4, 8).png" $@
 
 addie_ppucvbs_ph_0.png: addie.bin
-	${PY} ppu_cvbs_preview.py -raw -comb -frames 3 -noskipdot $<
-
-solstice_ppucvbs_ph_0.png: solstice.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -frames 2 $<
-
-rockman2_ppucvbs_ph_0.png: rockman2.bin
-	${PY} ppu_cvbs_preview.py -raw -comb -lcomb -frames 2 $<
+	${PY} ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -noskipdot $<
 
 240pee_ppucvbs_ph_0.png: 240pee.png
 	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -frames 2 $<
 
 ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -ppu 2C07 -comb $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -ppu 2C07 -filt 2-line $<
 	mv 240pee_2_ppucvbs_ph_0.png $@
 
 240pee_2_ppucvbs_ph_0.png: 240pee_2.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -comb -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
 
 240pee_3_ppucvbs_ph_0_comb.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -comb -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_comb.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_comb.png
 
 240pee_3_ppucvbs_ph_0_box.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -box -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt box -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_box.png
 
-smb_ppucvbs_ph_0.png: smb.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -cxp 3 -frames 2 $<
+dither_ppucvbs_ph_0_3line.png: dither.png
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 3-line -frames 2 $<
+	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_3line.png
+	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_3line.png
 
-smb_box_ppucvbs_ph_0.png: smb.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -cxp 3 -frames 2 -box $<
-	mv $(basename $<)_ppucvbs_ph_3.png smb_box_ppucvbs_ph_3.png
-	mv $(basename $<)_ppucvbs_ph_7.png smb_box_ppucvbs_ph_7.png
+dither_ppucvbs_ph_0_2line.png: dither.png
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
+	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_2line.png
+	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
+
+dither_ppucvbs_ph_0.png: dither.png
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -frames 2 $<
 
 usage.txt:
 	${RM} -r $@
