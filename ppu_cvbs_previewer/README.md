@@ -53,7 +53,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.2.0
+version 0.2.1
 ```
 
 ## Requirements

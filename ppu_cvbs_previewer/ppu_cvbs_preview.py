@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -310,13 +310,14 @@ def yc_comb_2line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, pal_c
         v_line = (cvbs_ppu - prev_line) / 2
 
         # rotate chroma line to account for next line's phase shift
-        prev_line = np.append(cvbs_ppu[r.NEXT_SHIFT:],cvbs_ppu[:r.NEXT_SHIFT])
+        shift = r.NEXT_SHIFT
     else:
         if scanline_0:
             prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
         u_line = v_line = np.array(cvbs_ppu - prev_line) / 2
         # rotate chroma line to account for next line's phase shift
-        prev_line = np.append(cvbs_ppu[-r.NEXT_SHIFT:],cvbs_ppu[:-r.NEXT_SHIFT])
+        shift = -2
+    prev_line = np.append(cvbs_ppu[shift:],cvbs_ppu[:shift])
     # notch filter the luma
     y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
     return y_line, u_line, v_line, prev_line
