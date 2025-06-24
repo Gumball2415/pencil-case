@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -138,7 +138,7 @@ def parse_indexed_png(file: str, palfile: str):
         if im.size != (256, 240):
             sys.exit("image is not 256x240.")
 
-        if im.mode != "P":
+        if im.mode != "P" or palfile is not None:
             # try to convert with input palette
             if palfile is None:
                 sys.exit("image is not indexed and palette is not provided.")
