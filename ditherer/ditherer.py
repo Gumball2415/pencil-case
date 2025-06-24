@@ -3,10 +3,66 @@
 # MIT-0
 
 import numpy as np
-import sys, argparse, os
+import sys, argparse
+from os import path
 from PIL import Image, ImageColor, ImagePalette
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
+
+def parse_argv(argv):
+    parser=argparse.ArgumentParser(
+        description="Image ditherer",
+        epilog="version " + VERSION)
+    parser.add_argument(
+        "--deltae",
+        type = str,
+        help = "Method of delta E, or finding closest color. default is \"sRGB\".",
+        choices=[
+            "sRGB",
+            "CIE94"
+        ],
+        default = "sRGB")
+    parser.add_argument(
+        "-gam",
+        "--gamma",
+        help="EOTF gamma setting. default is 2.2",
+        type=np.float64,
+        default=2.2)
+    parser.add_argument(
+        "--CIE94-tex",
+        help="sets application constants for CIE94 Delta-E to textile mode. default is False.",
+        action="store_true")
+    parser.add_argument(
+        "--threshold",
+        help="adjusts dither threshold. default is 0.5",
+        type=np.float64,
+        default=0.5)
+    parser.add_argument(
+        "--scale-threshold",
+        type=str,
+        help="method for scaling the threshold according to the dither matrix's characteristics (experimental).",
+        choices=[
+            "no",
+            "mask-size",
+            "unique-count"
+        ],
+        default = "no")
+    parser.add_argument(
+        "--color-threshold",
+        help="colors the dither mask locally according to the pixel color",
+        action="store_true")
+    parser.add_argument(
+        "-pal",
+        "--palette",
+        nargs="+",
+        help="palette array, in #rrggbb hex")
+    parser.add_argument(
+        "mask",
+        help="input .png dither mask")
+    parser.add_argument(
+        "input",
+        help="input .png file. saved as input_dither_mask.png")
+    return parser.parse_args(argv[1:])
 
 # http://brucelindbloom.com/index.html?Math.html
 srgb_to_xyz_M = np.array([
@@ -101,63 +157,6 @@ deltae_func = {
 SCALE_THRESHOLD_FACTOR = 1/5
 
 def main(argv=None):
-    def parse_argv(argv):
-        parser=argparse.ArgumentParser(
-            description="Image ditherer",
-            epilog="version " + VERSION)
-        parser.add_argument(
-            "--deltae",
-            type = str,
-            help = "Method of delta E, or finding closest color. default is \"sRGB\".",
-            choices=[
-                "sRGB",
-                "CIE94"
-            ],
-            default = "sRGB")
-        parser.add_argument(
-            "-gam",
-            "--gamma",
-            help="EOTF gamma setting. default is 2.2",
-            type=np.float64,
-            default=2.2)
-        parser.add_argument(
-            "--CIE94-tex",
-            help="sets application constants for CIE94 Delta-E to textile mode. default is False.",
-            action="store_true")
-        parser.add_argument(
-            "--threshold",
-            help="adjusts dither threshold. default is 0.5",
-            type=np.float64,
-            default=0.5)
-        parser.add_argument(
-            "--scale-threshold",
-            type=str,
-            help="method for scaling the threshold according to the dither matrix's characteristics (experimental).",
-            choices=[
-                "no",
-                "mask-size",
-                "unique-count"
-            ],
-            default = "no")
-        parser.add_argument(
-            "--color-threshold",
-            help="colors the dither mask locally according to the pixel color",
-            action="store_true")
-        parser.add_argument(
-            "--palette",
-            "-pal",
-            nargs="+",
-            help="palette array, in #rrggbb hex")
-        parser.add_argument(
-            "mask",
-            help="input .png dither mask")
-        parser.add_argument(
-            "input",
-            help="input .png file")
-        parser.add_argument(
-            "output",
-            help="output .png file")
-        return parser.parse_args(argv[1:])
     args = parse_argv(argv or sys.argv)
 
     deltae = deltae_func[args.deltae]
@@ -168,74 +167,74 @@ def main(argv=None):
 
     with Image.open(args.mask) as immask:
         if immask.mode != "L":
-            sys.exit("dither mask is not 8-bit grayscale!")
+            print("dither mask is not 8-bit grayscale! converting...")
+            immask = immask.convert(mode="L")
 
         dithermask = np.array(immask, dtype=np.float64)
-        d_w, d_h = dithermask.shape
+    d_h, d_w = dithermask.shape
 
-        threshold: np.float64
-        match args.scale_threshold:
-            case "no":
-                metric = 1
-            case "size":
-                metric = np.float64(d_w * d_h) / 2
-            case "unique-count":
-                metric = np.float64(len(np.unique_values(dithermask))) / 2
+    threshold: np.float64
+    match args.scale_threshold:
+        case "no":
+            metric = 1
+        case "size":
+            metric = np.float64(d_w * d_h) / 2
+        case "unique-count":
+            metric = np.float64(len(np.unique_values(dithermask))) / 2
 
-        scale_factor = np.pow(metric, SCALE_THRESHOLD_FACTOR)
-        
-        threshold = args.threshold / scale_factor
-        #print(f"metric: {metric}, scalefactor: {scale_factor}, threshold {args.threshold}->{threshold}")
+    scale_factor = np.pow(metric, SCALE_THRESHOLD_FACTOR)
+    
+    threshold = args.threshold / scale_factor
+    #print(f"metric: {metric}, scalefactor: {scale_factor}, threshold {args.threshold}->{threshold}")
 
-        with Image.open(args.input) as im:
-            # convert im to RGB only
-            im = im.convert(mode="RGB")
-            imarr = np.array(im, dtype=np.float64)
-            imout = np.zeros(imarr.shape[0:2], dtype=np.uint8)
-            i_w, i_h, _ = imarr.shape
+    with Image.open(args.input) as im:
+        # convert im to RGB only
+        im = im.convert(mode="RGB")
+        imarr = np.array(im, dtype=np.float64)
+        imout = np.zeros(imarr.shape[0:2], dtype=np.uint8)
+        i_h, i_w, _ = imarr.shape
 
-            # rescale to 0-1
-            imarr /= 255.0
-            palette /= 255.0
-            dithermask /= 255.0
+    # rescale to 0-1
+    imarr /= 255.0
+    palette /= 255.0
+    dithermask /= 255.0
 
-            # rescale dithermask 
-            threshold_clamped = min(threshold, 1.0)
-            dithermask -= np.average(dithermask) * threshold_clamped
+    # rescale dithermask 
+    threshold_clamped = min(threshold, 1.0)
+    dithermask -= np.average(dithermask) * threshold_clamped
 
-            # normalize individual pixels of image for color thresholding, if specified
-            # this is done in the nonlinear domain to preserve chroma
-            imarr_normalized: np.array
-            if args.color_threshold:
-                imarr_normalized = np.apply_along_axis(lambda x: x / np.max(x) if np.max(x) > 0. else 1., 2, imarr)
+    # normalize individual pixels of image for color thresholding, if specified
+    # this is done in the nonlinear domain to preserve chroma
+    imarr_normalized: np.array
+    if args.color_threshold:
+        imarr_normalized = np.apply_along_axis(lambda x: x / np.max(x) if np.max(x) > 0. else 1., 2, imarr)
 
-            # convert to linear light
-            # apply eotf gamma to image before dither
-            for y in range(imarr.shape[0]):
-                for x in range(imarr.shape[1]):
-                    for c in range(imarr.shape[2]):
-                        imarr[y,x,c] = min(max(imarr[y,x,c]**(args.gamma), 0.0), 1.0)
+    # convert to linear light
+    # apply eotf gamma to image before dither
+    for y in range(imarr.shape[0]):
+        for x in range(imarr.shape[1]):
+            for c in range(imarr.shape[2]):
+                imarr[y,x,c] = min(max(imarr[y,x,c]**(args.gamma), 0.0), 1.0)
 
-            # extend dithermask to cover the whole image
-            full_dithermask = np.tile(dithermask, [int(np.ceil(i_h/d_h)), int(np.ceil(i_w/d_w))])[0:i_h, 0:i_w]
-            if args.color_threshold:
-                full_dithermask = full_dithermask[..., None] * (imarr_normalized * threshold_clamped + (1 - threshold_clamped))
+    # extend dithermask to cover the whole image
+    full_dithermask = np.tile(dithermask, [int(np.ceil(i_h/d_h)), int(np.ceil(i_w/d_w))])[0:i_h, 0:i_w]
+    if args.color_threshold:
+        full_dithermask = full_dithermask[..., None] * (imarr_normalized * threshold_clamped + (1 - threshold_clamped))
 
-            # modified ordered dithering
-            # NOTE: This is not Yliluoma dithering. ---- Kagamiin~
-            # https://bisqwit.iki.fi/story/howto/dither/jy/#Algorithms
-            for y in range(imout.shape[0]):
-                for x in range(imout.shape[1]):
-                    px_in = imarr[y,x]
-                    px_mask = full_dithermask[y,x]
-                    px_attempt = px_in + (px_mask * threshold)
-                    index = deltae(px_attempt, palette, args)
-                    imout[y,x] = index[0][0]
+    # modified ordered dithering
+    # NOTE: This is not Yliluoma dithering. ---- Kagamiin~
+    # https://bisqwit.iki.fi/story/howto/dither/jy/#Algorithms
+    for y in range(imout.shape[0]):
+        for x in range(imout.shape[1]):
+            px_in = imarr[y,x]
+            px_mask = full_dithermask[y,x]
+            px_attempt = px_in + (px_mask * threshold)
+            index = deltae(px_attempt, palette, args)
+            imout[y,x] = index[0][0]
 
-            pil_image = Image.fromarray(imout, "P")
-            pil_image.putpalette(np.concatenate([[int(c[0]), int(c[1]), int(c[2])] for c in palette * 255]).tolist(), rawmode="RGB")
-            pil_image.save(args.output, format="PNG", optimize=True)
+    pil_image = Image.fromarray(imout, "P")
+    pil_image.putpalette(np.concatenate([[int(c[0]), int(c[1]), int(c[2])] for c in palette * 255]).tolist(), rawmode="RGB")
+    pil_image.save(f"{path.splitext(args.input)[0]}_{path.splitext(path.basename(args.mask))[0]}_dither.png", format="PNG", optimize=True)
 
 if __name__ == '__main__':
     main(sys.argv)
-
