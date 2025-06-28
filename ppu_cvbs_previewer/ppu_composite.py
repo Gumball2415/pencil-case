@@ -21,7 +21,7 @@ import argparse
 import sys
 import numpy as np
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 
 # signal LUTs
 # voltage highs and lows
@@ -121,11 +121,11 @@ def encode_composite_sample(
         elif pixel == COLORBURST:
             return signal_table_composite[4, int(in_color_phase(cburst_phase, wave_phase, alternate_line)), 0]
         else:
-            sys.exit(f"invalid PPU pixel. got {pixel}")
+            sys.exit(f"invalid PPU pixel. got {pixel:04X}")
 
-    emphasis = (pixel & 0x0E00) >> 9
-    luma = (pixel & 0x0030) >> 4
-    hue = pixel & 0x000F
+    emphasis = (pixel & 0b111000000) >> 6
+    luma =     (pixel & 0b000110000) >> 4
+    hue =       pixel & 0b000001111
     # 1 = emphasis activate
     if emphasis != 0:
         attenuate = int(

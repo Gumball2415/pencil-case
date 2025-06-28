@@ -53,7 +53,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.2.2
+version 0.2.3
 ```
 
 ## Requirements
@@ -61,13 +61,17 @@ version 0.2.2
 - See `requirements.txt` for details.
 - i'm a bit too lazy to search up the minimum version requirements so this is what i had
 
-### This script requires:
+### Libraries
+
+For python:
 
 ```python
 numpy==2.3.0
 pillow==11.2.1
 scipy==1.15.3
 ```
+
+additionally, FFmpeg is required for animated .mp4 previews
 
 ## Examples
 
@@ -76,7 +80,6 @@ scipy==1.15.3
 ### 3-phase dot crawl (averaged and animated)
 
 ![3-phase dot crawl averaged](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
-
 
 ![3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
 

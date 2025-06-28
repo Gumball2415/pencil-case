@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -538,7 +538,9 @@ def encode_frame(raw_ppu,
 def save_image(input: str, out, phases, full_resolution = False, debug = False):
     with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
     # scale image
-        if not (full_resolution or debug):
+        if (full_resolution or debug):
+            imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*8)), Image.Resampling.NEAREST)
+        else:
             imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
             imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
         imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
