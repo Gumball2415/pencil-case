@@ -12,8 +12,8 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
-                           [-filt {notch,box,2-line,3-line}] [-full]
-                           [-frames FRAMES] [-avg] [-noskipdot]
+                           [-filt {sinc,gauss,blargg,box,notch,2-line,3-line}]
+                           [-full] [-frames FRAMES] [-avg] [-noskipdot]
                            input
 
 NES PPU composite video shader previewer
@@ -41,7 +41,7 @@ options:
                         colors nonlinearly. a value of 4 very roughly
                         corresponds to a -5 degree delta per luma row. default
                         = 4
-  -filt {notch,box,2-line,3-line}, --decoding_filter {notch,box,2-line,3-line}
+  -filt {sinc,gauss,blargg,box,notch,2-line,3-line}, --decoding_filter {sinc,gauss,blargg,box,notch,2-line,3-line}
                         choose decoding method to filter chroma and luma.
                         default = notch.
   -full, --full_resolution
@@ -53,7 +53,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.2.3
+version 0.2.4
 ```
 
 ## Requirements

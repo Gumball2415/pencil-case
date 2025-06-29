@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.2.3"
+VERSION = "0.2.4"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -77,8 +77,11 @@ def parse_argv(argv):
         "-filt",
         "--decoding_filter",
         choices=[
-            "notch",
+            "sinc",
+            "gauss",
+            "blargg",
             "box",
+            "notch",
             "2-line",
             "3-line",
         ],
@@ -282,12 +285,8 @@ def encode_scanline(data,
 
     return cvbs_ppu
 
-# TODO: custom kernels
-box_kernel = np.full(12, 1, dtype=np.float64)
-box_kernel /= np.sum(box_kernel)
-
-def yc_box(cvbs_ppu):
-    y_line = signal.convolve(cvbs_ppu, box_kernel, mode="same")
+def yc_kernel(cvbs_ppu, kernel):
+    y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
     c_line = cvbs_ppu - y_line
     return y_line, c_line, c_line
 
@@ -371,14 +370,44 @@ def decode_scanline(
     b_notch, a_notch = signal.iirnotch(PPU_Cb, Q_FACTOR, PPU_Fs)
     b_peak, a_peak = signal.iirpeak(PPU_Cb, Q_FACTOR, PPU_Fs)
 
+    # kernel
+    box_kernel = np.full(12, 1, dtype=np.float64)
+    box_kernel /= np.sum(box_kernel)
+
+
+    fgap = 1e6
+
+    # https://www.dspguide.com/ch16/2.htm
+    # Equation 16-4
+    # windowed sinc with kaiser beta=12
+    fc = (PPU_Cb-fgap)/PPU_Fs
+    M = 12*10+1
+    sinc_kernel = np.zeros(M, dtype=np.float64)
+    for i in range(M):
+        x = i-M/2
+        if x == 0: x = 2*np.pi*fc
+        sinc_kernel[i] = (np.sin(2*np.pi*fc*(x))/x)
+    sinc_kernel *= signal.windows.kaiser(M, 12)
+    sinc_kernel /= np.sum(sinc_kernel)
+
+    gauss_kernel = signal.windows.gaussian(M, 12)
+    gauss_kernel /= np.sum(gauss_kernel)
+
     # normalize blank/black
     cvbs_ppu -= ppu.composite_black
     YUV_line = np.zeros((r.SAMPLES_PER_SCANLINE, 3), dtype=np.float64)
 
     # separate luma and chroma
     match decoding_filter:
+        case "blargg":
+            YUV_line[:, 0], _, _ = yc_kernel(cvbs_ppu, sinc_kernel)
+            _, u_line, v_line = yc_kernel(cvbs_ppu, gauss_kernel)
+        case "sinc":
+            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, sinc_kernel)
+        case "gauss":
+            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, gauss_kernel)
         case "box":
-            YUV_line[:, 0], u_line, v_line = yc_box(cvbs_ppu)
+            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, box_kernel)
         case "2-line":
             YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_notch, a_notch, ppu_type == "2C07", scanline == 0)
         case "3-line":
@@ -388,6 +417,7 @@ def decode_scanline(
         case _:
             sys.exit(f"unknown decoding filter option: {decoding_filter}")
 
+    DISABLE_CHROMA = False
 
     # get UV decoding phases
     # correct for weird 90 degree offset
@@ -417,20 +447,31 @@ def decode_scanline(
     U_decode = np.tile(U_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
     V_decode = np.tile(V_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
     # qam
-    YUV_line[:, 1] = u_line * U_decode
-    YUV_line[:, 2] = v_line * V_decode
+    if not DISABLE_CHROMA:
+        YUV_line[:, 1] = u_line * U_decode
+        YUV_line[:, 2] = v_line * V_decode
 
 
     # filter chroma
     if debug:
         YUV_line = np.array([cvbs_ppu, YUV_line[:, 1], YUV_line[:, 2]]).T
     else:
-        if decoding_filter == "box":
-            YUV_line[:, 1] = signal.convolve(YUV_line[:, 1], box_kernel, mode="same")
-            YUV_line[:, 2] = signal.convolve(YUV_line[:, 2], box_kernel, mode="same")
-        else:
-            YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
-            YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
+        match decoding_filter:
+            case "box":
+                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], box_kernel)
+                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], box_kernel)
+            case "sinc":
+                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], sinc_kernel)
+                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], sinc_kernel)
+            case "gauss":
+                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], gauss_kernel)
+                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], gauss_kernel)
+            case "blargg":
+                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], gauss_kernel)
+                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], gauss_kernel)
+            case _:
+                YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
+                YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
     return YUV_line, prev_line
 
 # keeps track of odd-even frame render parity
