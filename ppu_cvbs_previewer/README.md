@@ -13,8 +13,9 @@ usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
                            [-filt {fir,notch,2-line,3-line}]
-                           [-firtype {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}]
-                           [-full] [-frames FRAMES] [-avg] [-noskipdot]
+                           [-firtype {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}]
+                           [-full] [-frames FRAMES] [-avg] [-diff]
+                           [-noskipdot]
                            input
 
 NES PPU composite video shader previewer
@@ -45,7 +46,7 @@ options:
   -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
                         method for separating luma and chroma. default =
                         notch.
-  -firtype {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}, --fir_filter_type {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}
+  -firtype {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}, --fir_filter_type {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}
                         FIR kernels for separating luma and chroma
                         respectively. default = sinc, gauss.
   -full, --full_resolution
@@ -54,10 +55,13 @@ options:
   -avg, --average       use with -frames argument. averages all rendered
                         frames into one. will save output as
                         input_ppucvbs_ph_avg_x.png
+  -diff, --difference   use with -frames argument. calculates the absolute
+                        difference of the first two frames. will save output
+                        as input_ppucvbs_ph_avg_x.png
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.3.0
+version 0.3.1
 ```
 
 ## Requirements

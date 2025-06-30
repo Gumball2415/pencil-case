@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -90,7 +90,6 @@ def parse_argv(argv):
         choices=[
             "sinc",
             "gauss",
-            "blargg",
             "box",
             "kaiser",
         ],
@@ -112,6 +111,11 @@ def parse_argv(argv):
         "--average",
         action="store_true",
         help="use with -frames argument. averages all rendered frames into one. will save output as input_ppucvbs_ph_avg_x.png")
+    parser.add_argument(
+        "-diff",
+        "--difference",
+        action="store_true",
+        help="use with -frames argument. calculates the absolute difference of the first two frames. will save output as input_ppucvbs_ph_avg_x.png")
     parser.add_argument(
         "-noskipdot",
         action="store_true",
@@ -628,16 +632,20 @@ def main(argv=None):
         )
         frames.append((out, phase))
 
-        if not avg:
+        if not (avg and args.difference):
             print(nextphase)
             save_image(args.input, out, phase, args.full_resolution, args.debug)
         phase = nextphase
 
-    if avg:
+    if avg or args.difference:
         images, phases = zip(*frames)
-
         images = np.array(images)
-        out = np.average(images, axis=0)
+
+        if avg:
+            out = np.average(images, axis=0)
+        elif args.difference:
+            out = images[0] - images[1]
+            out = np.absolute(out)
         save_image(args.input, out, phases, args.full_resolution, args.debug)
 
 
