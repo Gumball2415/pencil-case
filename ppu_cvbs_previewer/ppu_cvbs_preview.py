@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.2.4"
+VERSION = "0.3.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -77,16 +77,26 @@ def parse_argv(argv):
         "-filt",
         "--decoding_filter",
         choices=[
-            "sinc",
-            "gauss",
-            "blargg",
-            "box",
+            "fir",
             "notch",
             "2-line",
             "3-line",
         ],
         default="notch",
-        help = "choose decoding method to filter chroma and luma. default = notch.")
+        help = "method for separating luma and chroma. default = notch.")
+    parser.add_argument(
+        "-firtype",
+        "--fir_filter_type",
+        choices=[
+            "sinc",
+            "gauss",
+            "blargg",
+            "box",
+            "kaiser",
+        ],
+        nargs=2,
+        default=("sinc", "gauss"),
+        help = "FIR kernels for separating luma and chroma respectively. default = sinc, gauss.")
     parser.add_argument(
         "-full",
         "--full_resolution",
@@ -221,19 +231,19 @@ class RasterTimings:
     SCANLINES: int
     NEXT_SHIFT: int = field(init=False)
 
-    BEFORE_ACTIVE: int = field(init=False)# = HSYNC + B_PORCH_A + CBURST + B_PORCH_B + PULSE + L_BORDER
-    AFTER_ACTIVE: int = field(init=False)# = BEFORE_ACTIVE + ACTIVE
+    BEFORE_ACTIVE: int = field(init=False)
+    AFTER_ACTIVE: int = field(init=False)
 
-    BEFORE_VID: int = field(init=False)# = HSYNC + B_PORCH_A + CBURST + B_PORCH_B
-    AFTER_VID: int = field(init=False)# = BEFORE_VID + PULSE + L_BORDER + ACTIVE + R_BORDER
+    BEFORE_VID: int = field(init=False)
+    AFTER_VID: int = field(init=False)
 
-    BEFORE_CBURST: int = field(init=False)# = HSYNC + B_PORCH_A
-    AFTER_CBURST: int = field(init=False)# = BEFORE_CBURST + CBURST
+    BEFORE_CBURST: int = field(init=False)
+    AFTER_CBURST: int = field(init=False)
 
-    PULSE_INDEX: int = field(init=False)# = HSYNC + B_PORCH_A + CBURST + B_PORCH_B
+    PULSE_INDEX: int = field(init=False)
 
-    PIXELS_PER_SCANLINE: int = field(init=False)# = HSYNC + B_PORCH_A + CBURST + B_PORCH_B + PULSE + L_BORDER + ACTIVE + R_BORDER + F_PORCH
-    SAMPLES_PER_SCANLINE: int = field(init=False)# = PIXELS_PER_SCANLINE * PIXEL_SIZE
+    PIXELS_PER_SCANLINE: int = field(init=False)
+    SAMPLES_PER_SCANLINE: int = field(init=False)
 
     def __post_init__(self):
         self.BEFORE_ACTIVE = self.HSYNC + self.B_PORCH_A + self.CBURST + self.B_PORCH_B + self.PULSE + self.L_BORDER
@@ -288,7 +298,7 @@ def encode_scanline(data,
 def yc_kernel(cvbs_ppu, kernel):
     y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
     c_line = cvbs_ppu - y_line
-    return y_line, c_line, c_line
+    return y_line, c_line
 
 def yc_notch(cvbs_ppu, b_notch, a_notch):
     y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
@@ -352,46 +362,18 @@ def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_peak, a_peak, pal_com
 
 def decode_scanline(
     cvbs_ppu,
-    starting_phase: int,
     ppu_type: str,
     scanline: int,
     r: RasterTimings,
-    PPU_Fs: float,
-    PPU_Cb: float,
+    b_luma, a_luma,
+    b_chroma, a_chroma,
     decoding_filter: str,
+    luma_kernel,
+    chroma_kernel,
     prev_line,
     alternate_line = False,
     debug = False
     ):
-    # chroma filters
-    Q_FACTOR = 1
-    chroma_N, chroma_Wn = signal.buttord(1300000, 3600000, 2, 20, fs=PPU_Fs, analog=False)
-    b_chroma, a_chroma = signal.butter(chroma_N, chroma_Wn, 'low', fs=PPU_Fs, analog=False)
-    b_notch, a_notch = signal.iirnotch(PPU_Cb, Q_FACTOR, PPU_Fs)
-    b_peak, a_peak = signal.iirpeak(PPU_Cb, Q_FACTOR, PPU_Fs)
-
-    # kernel
-    box_kernel = np.full(12, 1, dtype=np.float64)
-    box_kernel /= np.sum(box_kernel)
-
-
-    fgap = 1e6
-
-    # https://www.dspguide.com/ch16/2.htm
-    # Equation 16-4
-    # windowed sinc with kaiser beta=12
-    fc = (PPU_Cb-fgap)/PPU_Fs
-    M = 12*10+1
-    sinc_kernel = np.zeros(M, dtype=np.float64)
-    for i in range(M):
-        x = i-M/2
-        if x == 0: x = 2*np.pi*fc
-        sinc_kernel[i] = (np.sin(2*np.pi*fc*(x))/x)
-    sinc_kernel *= signal.windows.kaiser(M, 12)
-    sinc_kernel /= np.sum(sinc_kernel)
-
-    gauss_kernel = signal.windows.gaussian(M, 12)
-    gauss_kernel /= np.sum(gauss_kernel)
 
     # normalize blank/black
     cvbs_ppu -= ppu.composite_black
@@ -399,21 +381,15 @@ def decode_scanline(
 
     # separate luma and chroma
     match decoding_filter:
-        case "blargg":
-            YUV_line[:, 0], _, _ = yc_kernel(cvbs_ppu, sinc_kernel)
-            _, u_line, v_line = yc_kernel(cvbs_ppu, gauss_kernel)
-        case "sinc":
-            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, sinc_kernel)
-        case "gauss":
-            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, gauss_kernel)
-        case "box":
-            YUV_line[:, 0], u_line, v_line = yc_kernel(cvbs_ppu, box_kernel)
+        case "fir":
+            YUV_line[:, 0], u_line = yc_kernel(cvbs_ppu, luma_kernel)
+            v_line = u_line
         case "2-line":
-            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_notch, a_notch, ppu_type == "2C07", scanline == 0)
+            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_luma, a_luma, ppu_type == "2C07", scanline == 0)
         case "3-line":
-            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_peak, a_peak, ppu_type == "2C07", scanline)
+            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, ppu_type == "2C07", scanline)
         case "notch":
-            YUV_line[:, 0], u_line, v_line = yc_notch(cvbs_ppu, b_notch, a_notch)
+            YUV_line[:, 0], u_line, v_line = yc_notch(cvbs_ppu, b_luma, a_luma)
         case _:
             sys.exit(f"unknown decoding filter option: {decoding_filter}")
 
@@ -455,23 +431,12 @@ def decode_scanline(
     # filter chroma
     if debug:
         YUV_line = np.array([cvbs_ppu, YUV_line[:, 1], YUV_line[:, 2]]).T
+    elif decoding_filter == "fir":
+        YUV_line[:, 1], _ = yc_kernel(YUV_line[:, 1], chroma_kernel)
+        YUV_line[:, 2], _ = yc_kernel(YUV_line[:, 2], chroma_kernel)
     else:
-        match decoding_filter:
-            case "box":
-                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], box_kernel)
-                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], box_kernel)
-            case "sinc":
-                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], sinc_kernel)
-                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], sinc_kernel)
-            case "gauss":
-                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], gauss_kernel)
-                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], gauss_kernel)
-            case "blargg":
-                YUV_line[:, 1], _, _ = yc_kernel(YUV_line[:, 1], gauss_kernel)
-                YUV_line[:, 2], _, _ = yc_kernel(YUV_line[:, 2], gauss_kernel)
-            case _:
-                YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
-                YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
+        YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
+        YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
     return YUV_line, prev_line
 
 # keeps track of odd-even frame render parity
@@ -484,11 +449,12 @@ def encode_frame(raw_ppu,
     starting_phase: int,
     phd: int,
     decoding_filter: str,
+    fir_filter_type: str,
     skipdot = False,
     full_resolution = False,
     debug = False
 ):
-    X_main = 26601712.5 if ppu_type == "2C07" else (236250000 / 11)
+    X_main = 26601712.5 if ppu_type == "2C07" else (236.25e6 / 11)
     # samplerate and colorburst freqs
     # used for phase shift
     PPU_Fs = X_main * 2
@@ -528,6 +494,55 @@ def encode_frame(raw_ppu,
             SCANLINES = 262
         )
 
+    # dummy, will be overwritten
+    luma_kernel = chroma_kernel = b_luma = a_luma = 0
+
+    # chroma filters
+    Q_FACTOR = 1
+    chroma_N, chroma_Wn = signal.buttord(1300000, 3600000, 2, 20, fs=PPU_Fs, analog=False)
+    b_chroma, a_chroma = signal.butter(chroma_N, chroma_Wn, 'low', fs=PPU_Fs, analog=False)
+
+    # kernels
+    box_kernel = np.full(12, 1, dtype=np.float64)
+    box_kernel /= np.sum(box_kernel)
+
+    fgap = 0.8e6
+    cutoff = PPU_Cb-fgap
+
+    M = 12*10
+
+    sinc_kernel = np.sinc(2 * (cutoff/PPU_Fs) * (np.arange(M) - M/2))
+
+    sinc_kernel *= signal.windows.kaiser(M, 8)
+    sinc_kernel /= np.sum(sinc_kernel)
+
+    gauss_kernel = signal.windows.gaussian(M, 12)
+    gauss_kernel /= np.sum(gauss_kernel)
+
+    taps, beta = signal.kaiserord(108, fgap/(0.2*PPU_Fs))
+
+    kaiser_kernel = signal.firwin(
+        taps,
+        cutoff=cutoff,
+        window=("kaiser", beta),
+        fs=PPU_Fs)
+
+    kernel_dict = {
+        "sinc": sinc_kernel,
+        "gauss": gauss_kernel,
+        "box": box_kernel,
+        "kaiser": kaiser_kernel
+    }
+
+    match decoding_filter:
+        case "fir":
+            luma_kernel = kernel_dict[fir_filter_type[0]]
+            chroma_kernel = kernel_dict[fir_filter_type[1]]
+        case "3-line":
+            b_luma, a_luma = signal.iirpeak(PPU_Cb, Q_FACTOR, PPU_Fs)
+        case _:
+            b_luma, a_luma = signal.iirnotch(PPU_Cb, Q_FACTOR, PPU_Fs)
+
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
 
     # dummy; will be overwritten with an array
@@ -542,13 +557,14 @@ def encode_frame(raw_ppu,
         # deccode scanline
         out[scanline], prev_line = decode_scanline(
             cvbs_ppu,
-            starting_phase,
             ppu_type,
             scanline,
             r,
-            PPU_Fs,
-            PPU_Cb,
+            b_luma, a_luma,
+            b_chroma, a_chroma,
             decoding_filter,
+            luma_kernel,
+            chroma_kernel,
             prev_line,
             alternate_line,
             debug
@@ -605,6 +621,7 @@ def main(argv=None):
             phase,
             args.phase_distortion,
             args.decoding_filter,
+            args.fir_filter_type,
             (not args.noskipdot),
             args.full_resolution,
             args.debug
@@ -612,6 +629,7 @@ def main(argv=None):
         frames.append((out, phase))
 
         if not avg:
+            print(nextphase)
             save_image(args.input, out, phase, args.full_resolution, args.debug)
         phase = nextphase
 

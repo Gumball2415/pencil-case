@@ -8,11 +8,12 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 
 ## Usage
 
-```cmd
+```sh
 usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
                            [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
-                           [-filt {sinc,gauss,blargg,box,notch,2-line,3-line}]
+                           [-filt {fir,notch,2-line,3-line}]
+                           [-firtype {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}]
                            [-full] [-frames FRAMES] [-avg] [-noskipdot]
                            input
 
@@ -41,9 +42,12 @@ options:
                         colors nonlinearly. a value of 4 very roughly
                         corresponds to a -5 degree delta per luma row. default
                         = 4
-  -filt {sinc,gauss,blargg,box,notch,2-line,3-line}, --decoding_filter {sinc,gauss,blargg,box,notch,2-line,3-line}
-                        choose decoding method to filter chroma and luma.
-                        default = notch.
+  -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
+                        method for separating luma and chroma. default =
+                        notch.
+  -firtype {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}, --fir_filter_type {sinc,gauss,blargg,box,kaiser} {sinc,gauss,blargg,box,kaiser}
+                        FIR kernels for separating luma and chroma
+                        respectively. default = sinc, gauss.
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
@@ -53,7 +57,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.2.4
+version 0.3.0
 ```
 
 ## Requirements
@@ -101,7 +105,7 @@ additionally, FFmpeg is required for animated .mp4 previews
 
 ### Crosstalk tests
 
-![Crosstalk test: Notch filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
+![Crosstalk test: FIR filter (Sinc + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
 
 ![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
 

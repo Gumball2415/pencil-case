@@ -17,7 +17,7 @@ animlist := addie 240pee 240pee_2_NTSC 240pee_3_comb 240pee_3_box dither dither_
 
 animlist := $(foreach o, ${animlist}, ${examples_dir}/${o}.mp4)
 
-.PHONY: usage.txt
+.PHONY: usage.txt dither dither_2line dither_3line
 
 all: examples
 
@@ -103,7 +103,7 @@ ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_comb.png
 
 240pee_3_ppucvbs_ph_0_box.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt box -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -firtype box box -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_box.png
 
@@ -118,7 +118,7 @@ dither_ppucvbs_ph_0_2line.png: dither.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
 dither_ppucvbs_ph_0.png: dither.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -frames 2 $<
 
 usage.txt:
 	${RM} -r $@
