@@ -9,11 +9,11 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 ## Usage
 
 ```sh
-usage: ppu_cvbs_preview.py [-h] [-d] [-cxp COLOR_CLOCK_PHASE] [-raw]
-                           [-pal PALETTE] [-ppu {2C02,2C07}]
+usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
+                           [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
                            [-filt {fir,notch,2-line,3-line}]
-                           [-firtype {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}]
+                           [-ftype {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
                            input
@@ -27,6 +27,8 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -d, --debug           debug messages
+  --plot_filters        plot chroma/luma filters. does not include filter
+                        response of comb filters.
   -cxp COLOR_CLOCK_PHASE, --color_clock_phase COLOR_CLOCK_PHASE
                         starting clock phase of first frame. will affect all
                         other phases. range: 0-11
@@ -46,7 +48,7 @@ options:
   -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
                         method for separating luma and chroma. default =
                         notch.
-  -firtype {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}, --fir_filter_type {sinc,gauss,box,kaiser} {sinc,gauss,box,kaiser}
+  -ftype {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}, --fir_filter_type {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}
                         FIR kernels for separating luma and chroma
                         respectively. default = sinc, gauss.
   -full, --full_resolution
@@ -61,7 +63,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.3.1
+version 0.4.0
 ```
 
 ## Requirements
@@ -77,6 +79,7 @@ For python:
 numpy==2.3.0
 pillow==11.2.1
 scipy==1.15.3
+matplotlib==3.10.3
 ```
 
 additionally, FFmpeg is required for animated .mp4 previews

@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -37,6 +37,10 @@ def parse_argv(argv):
         "--debug",
         action="store_true",
         help="debug messages")
+    parser.add_argument(
+        "--plot_filters",
+        action="store_true",
+        help="plot chroma/luma filters. does not include filter response of comb filters.")
     parser.add_argument(
         "-cxp",
         "--color_clock_phase",
@@ -85,13 +89,14 @@ def parse_argv(argv):
         default="notch",
         help = "method for separating luma and chroma. default = notch.")
     parser.add_argument(
-        "-firtype",
+        "-ftype",
         "--fir_filter_type",
         choices=[
             "sinc",
             "gauss",
             "box",
             "kaiser",
+            "firls",
         ],
         nargs=2,
         default=("sinc", "gauss"),
@@ -456,7 +461,8 @@ def encode_frame(raw_ppu,
     fir_filter_type: str,
     skipdot = False,
     full_resolution = False,
-    debug = False
+    debug = False,
+    plot_filters = False
 ):
     X_main = 26601712.5 if ppu_type == "2C07" else (236.25e6 / 11)
     # samplerate and colorburst freqs
@@ -501,43 +507,69 @@ def encode_frame(raw_ppu,
     # dummy, will be overwritten
     luma_kernel = chroma_kernel = b_luma = a_luma = 0
 
+    MAX_DB_LOSS = 2
+    MIN_DB_GAIN = 65
+
     # chroma filters
-    Q_FACTOR = 1
-    chroma_N, chroma_Wn = signal.buttord(1300000, 3600000, 2, 20, fs=PPU_Fs, analog=False)
-    b_chroma, a_chroma = signal.butter(chroma_N, chroma_Wn, 'low', fs=PPU_Fs, analog=False)
+    # SMPTE 170M-2004, page 5, section 7.2
+    passband = 2
+    stopband = 20
+    b_chroma, a_chroma = signal.iirdesign(
+        1.3e6,
+        3.6e6,
+        gpass=passband,
+        gstop=stopband,
+        analog=False,
+        ftype="butter",
+        fs=PPU_Fs
+    )
 
     # kernels
     box_kernel = np.full(12, 1, dtype=np.float64)
     box_kernel /= np.sum(box_kernel)
 
-    fgap = 0.8e6
-    cutoff = PPU_Cb-fgap
+    kernel_taps = 12*10+1
+    # Equation 16-3
+    # https://www.dspguide.com/ch16/2.htm
+    bandwidth = 4/kernel_taps
 
-    M = 12*10
+    hcutoff = PPU_Cb-(bandwidth * PPU_Fs / 2)
+    cutoff = PPU_Cb-(bandwidth * PPU_Fs)
 
-    sinc_kernel = np.sinc(2 * (cutoff/PPU_Fs) * (np.arange(M) - M/2))
+    sinc_kernel = np.sinc(2 * (hcutoff/PPU_Fs) * (np.arange(kernel_taps) - kernel_taps/2))
 
-    sinc_kernel *= signal.windows.kaiser(M, 8)
+    sinc_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
     sinc_kernel /= np.sum(sinc_kernel)
 
-    gauss_kernel = signal.windows.gaussian(M, 12)
+    gauss_kernel = signal.windows.gaussian(kernel_taps, 11)
     gauss_kernel /= np.sum(gauss_kernel)
 
-    taps, beta = signal.kaiserord(108, fgap/(0.2*PPU_Fs))
+    taps, beta = signal.kaiserord(MIN_DB_GAIN, 2e6/(PPU_Fs))
 
     kaiser_kernel = signal.firwin(
         taps,
-        cutoff=cutoff,
+        cutoff=PPU_Cb-(2/taps*PPU_Fs),
         window=("kaiser", beta),
-        fs=PPU_Fs)
+        pass_zero=True,
+        fs=PPU_Fs
+    )
+
+    firls_kernel = signal.firls(
+        kernel_taps,
+        [0, cutoff, PPU_Cb, PPU_Fs/2],
+        [1, 1, 0, 0],
+        fs=PPU_Fs
+    )
 
     kernel_dict = {
         "sinc": sinc_kernel,
         "gauss": gauss_kernel,
         "box": box_kernel,
-        "kaiser": kaiser_kernel
+        "kaiser": kaiser_kernel,
+        "firls": firls_kernel,
     }
 
+    Q_FACTOR = 1
     match decoding_filter:
         case "fir":
             luma_kernel = kernel_dict[fir_filter_type[0]]
@@ -546,6 +578,34 @@ def encode_frame(raw_ppu,
             b_luma, a_luma = signal.iirpeak(PPU_Cb, Q_FACTOR, PPU_Fs)
         case _:
             b_luma, a_luma = signal.iirnotch(PPU_Cb, Q_FACTOR, PPU_Fs)
+
+    if plot_filters:
+        import matplotlib.pyplot as plt
+        if decoding_filter == "fir":
+            w, h = signal.freqz(luma_kernel)
+            x = w * PPU_Fs * 1.0 / (2 * np.pi)
+            y = 20 * np.log10(abs(h))
+            plt.figure(figsize=(10,5))
+            plt.semilogx(x, y)
+            w, h = signal.freqz(chroma_kernel)
+            x = w * PPU_Fs * 1.0 / (2 * np.pi)
+            y = 20 * np.log10(abs(h))
+            plt.semilogx(x, y)
+        else:
+            w, h = signal.freqz(b_luma, a_luma, fs=PPU_Fs)
+            x = w
+            y = 20 * np.log10(abs(h))
+            plt.semilogx(x, y)
+            w, h = signal.freqz(b_chroma, a_chroma, fs=PPU_Fs)
+            x = w
+            y = 20 * np.log10(abs(h))
+            plt.semilogx(x, y)
+        plt.ylabel('Amplitude [dB]')
+        plt.xlabel('Frequency [Hz]')
+        plt.title('Frequency response')
+        plt.grid(which='both', linestyle='-', color='grey')
+        plt.xticks([PPU_Fs/16, cutoff, PPU_Cb, PPU_Fs/2], ["px", "cut", "cb", "nyquist"])
+        plt.show()
 
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
 
@@ -628,7 +688,8 @@ def main(argv=None):
             args.fir_filter_type,
             (not args.noskipdot),
             args.full_resolution,
-            args.debug
+            args.debug,
+            args.plot_filters
         )
         frames.append((out, phase))
 

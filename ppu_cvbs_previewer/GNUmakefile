@@ -103,7 +103,7 @@ ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_comb.png
 
 240pee_3_ppucvbs_ph_0_box.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -firtype box box -frames 2 $<
+	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -ftype box box -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_box.png
 
