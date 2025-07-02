@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -528,23 +528,30 @@ def encode_frame(raw_ppu,
     box_kernel = np.full(12, 1, dtype=np.float64)
     box_kernel /= np.sum(box_kernel)
 
-    kernel_taps = 12*10+1
+    # chosen to have not more than -12db gain at pixel frequency
+    # while at the same time minimizing tap length
+    # for px = -6db: 96+1 taps
+    kernel_taps =70+1
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
-    bandwidth = 4/kernel_taps
+    bandwidth = 4/kernel_taps * PPU_Fs
 
-    hcutoff = PPU_Cb-(bandwidth * PPU_Fs / 2)
-    cutoff = PPU_Cb-(bandwidth * PPU_Fs)
+    hcutoff = PPU_Cb-(bandwidth / 2)
+    cutoff = PPU_Cb-bandwidth
+
+    if PPU_Cb <= bandwidth:
+        sys.exit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb}")
 
     sinc_kernel = np.sinc(2 * (hcutoff/PPU_Fs) * (np.arange(kernel_taps) - kernel_taps/2))
 
     sinc_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
     sinc_kernel /= np.sum(sinc_kernel)
 
-    gauss_kernel = signal.windows.gaussian(kernel_taps, 11)
+    gauss_kernel = signal.windows.gaussian(kernel_taps, 12)
+    gauss_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
     gauss_kernel /= np.sum(gauss_kernel)
 
-    taps, beta = signal.kaiserord(MIN_DB_GAIN, 2e6/(PPU_Fs))
+    taps, beta = signal.kaiserord(MIN_DB_GAIN, 5e6/(PPU_Fs))
 
     kaiser_kernel = signal.firwin(
         taps,
@@ -604,7 +611,7 @@ def encode_frame(raw_ppu,
         plt.xlabel('Frequency [Hz]')
         plt.title('Frequency response')
         plt.grid(which='both', linestyle='-', color='grey')
-        plt.xticks([PPU_Fs/16, cutoff, PPU_Cb, PPU_Fs/2], ["px", "cut", "cb", "nyquist"])
+        plt.xticks([PPU_Fs/32, PPU_Fs/16, cutoff, PPU_Cb, PPU_Fs/2], ["px/2", "px", "cut", "cb", "nyquist"])
         plt.show()
 
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
