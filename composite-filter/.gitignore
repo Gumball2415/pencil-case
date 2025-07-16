@@ -1,0 +1,5 @@
+/test*
+*vscode
+*_env
+*_ppucvbs_*
+*__pycache__
