@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.4.2"
+VERSION = "0.5.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -160,7 +160,7 @@ def parse_raw_ppu_px(file: str):
 def parse_indexed_png(file: str, palfile: str):
     with Image.open(file) as im:
         if im.size != (256, 240):
-            sys.exit("image is not 256x240.")
+            print_err_quit("image is not 256x240.")
 
         if im.mode != "P" or palfile is not None:
             # try to convert with input palette
@@ -407,15 +407,16 @@ def configure_filters(
         "firls": firls_kernel,
     }
 
-    Q_FACTOR = 1
+    # bandwidth: from 2px freq to colorburst frequency
+    q = PPU_Cb/abs(PPU_Cb-(PPU_Fs/32))
     match decoding_filter:
         case "fir":
             luma_kernel = kernel_dict[fir_filter_type[0]]
             chroma_kernel = kernel_dict[fir_filter_type[1]]
         case "3-line":
-            b_luma, a_luma = signal.iirpeak(PPU_Cb, Q_FACTOR, PPU_Fs)
+            b_luma, a_luma = signal.iirpeak(PPU_Cb, q, PPU_Fs)
         case _:
-            b_luma, a_luma = signal.iirnotch(PPU_Cb, Q_FACTOR, PPU_Fs)
+            b_luma, a_luma = signal.iirnotch(PPU_Cb, q, PPU_Fs)
 
     if plot_filters:
         import matplotlib.pyplot as plt
@@ -754,9 +755,6 @@ def main(argv=None):
             out = images[0] - images[1]
             out = np.absolute(out)
         save_image(args.input, out, phases, args.full_resolution, args.debug)
-
-
-    return
 
 if __name__=='__main__':
     main(sys.argv)

@@ -64,7 +64,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.4.2
+version 0.5.0
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this
