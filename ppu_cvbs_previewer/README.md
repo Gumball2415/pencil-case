@@ -35,7 +35,7 @@ options:
   -raw, --raw_ppu_px    input image is instead a 256x240 uint16_t array of raw
                         9-bit PPU pixels. format: EEELLCCCC
   -pal PALETTE, --palette PALETTE
-                        input 192-byte .pal file
+                        input 192-byte .pal file. default = "2C02.pal"
   -ppu {2C02,2C07}, --ppu {2C02,2C07}
                         PPU chip used for generating colors. default = 2C02
   -phd PHASE_DISTORTION, --phase_distortion PHASE_DISTORTION
@@ -64,7 +64,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.5.0
+version 0.5.1
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this

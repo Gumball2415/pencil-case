@@ -88,37 +88,37 @@ addie_ppucvbs_ph_0.png: addie.bin
 	${PY} ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -noskipdot $<
 
 240pee_ppucvbs_ph_0.png: 240pee.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -frames 2 $<
+	${PY} ppu_cvbs_preview.py -frames 2 $<
 
 ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -ppu 2C07 -filt 2-line $<
+	${PY} ppu_cvbs_preview.py -ppu 2C07 -filt 2-line $<
 	mv 240pee_2_ppucvbs_ph_0.png $@
 
 240pee_2_ppucvbs_ph_0.png: 240pee_2.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 
 240pee_3_ppucvbs_ph_0_comb.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_comb.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_comb.png
 
 240pee_3_ppucvbs_ph_0_box.png: 240pee_3.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -ftype box box -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_box.png
 
 dither_ppucvbs_ph_0_3line.png: dither.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 3-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 3-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_3line.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_3line.png
 
 dither_ppucvbs_ph_0_2line.png: dither.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt 2-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_2line.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
 dither_ppucvbs_ph_0.png: dither.png
-	${PY} ppu_cvbs_preview.py -pal 2C02G_wiki.pal -filt fir -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -frames 2 $<
 
 usage.txt:
 	${RM} -r $@

@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -59,8 +59,10 @@ def parse_argv(argv):
     parser.add_argument(
         "-pal",
         "--palette",
-        help="input 192-byte .pal file",
-        type=str)
+        help="input 192-byte .pal file. default = \"2C02.pal\"",
+        type=str,
+        default="2C02.pal"
+        )
     parser.add_argument(
         "-ppu",
         "--ppu",
