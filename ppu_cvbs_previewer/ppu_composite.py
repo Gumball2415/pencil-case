@@ -79,23 +79,22 @@ def parse_argv(argv):
 
     return parser.parse_args(argv[1:])
 
-ALTERNATE_PHASE = {
-    1: 4,
-    2: 3,
-    3: 2,
-    4: 1,
-    5: 12,
-    6: 11,
-    7: 10,
-    8: 9,
-    9: 8,
-    10: 7,
-    11: 6,
-    12: 5,
-}
-
 # 2C07 phase alternation
 def pal_phase(hue: int, alternate_line=False):
+    ALTERNATE_PHASE = {
+        1: 4,
+        2: 3,
+        3: 2,
+        4: 1,
+        5: 12,
+        6: 11,
+        7: 10,
+        8: 9,
+        9: 8,
+        10: 7,
+        11: 6,
+        12: 5,
+    }
     if (hue >= 1 and hue <= 12) and alternate_line:
         return ALTERNATE_PHASE[hue]
     else:

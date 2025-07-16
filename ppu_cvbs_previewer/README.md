@@ -53,7 +53,8 @@ options:
                         respectively. default = sinc, gauss.
   -full, --full_resolution
                         store the full framebuffer
-  -frames FRAMES        render x consecutive frames. range: 1-3. default = 1
+  -frames FRAMES        render x consecutive frames. usable range: 1-3.
+                        default = 1
   -avg, --average       use with -frames argument. averages all rendered
                         frames into one. will save output as
                         input_ppucvbs_ph_avg_x.png
@@ -63,8 +64,13 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.4.1
+version 0.4.2
 ```
+
+- the script outputs the next `color_clock_phase` for the succeeding frame. this
+  is meant to facilitate external conversion scripts such as encoding a video
+  frame-by-frame, where the phase output will feed into the next frame's phase
+  input.
 
 ## Requirements
 
