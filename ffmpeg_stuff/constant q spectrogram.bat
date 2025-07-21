@@ -1,3 +1,3 @@
-ffmpeg -y -i %1 -filter_complex "[0:a]showcqt=1080x1920:fps=60:bar_v=16:sono_v=bar_v*b_weighting(f):basefreq=20:endfreq=20000:axis=0:text=0:axis_h=0:bar_h=0:bar_g=4:sono_g=4:timeclamp=0.2:count=5:fcount=10:csp=bt709, transpose=3,scale=out_color_matrix=bt709" -color_range 1 -colorspace bt709 -color_trc bt709 -color_primaries bt709 -movflags faststart -c:v libx264 -preset ultrafast -crf 18 -pix_fmt yuv420p -c:a aac -b:a 384k "%~dp1%~n1_sono.mp4"
+ffmpeg -y -i %1 -filter_complex "[0:a]showcqt=1080x1920:fps=60:bar_v=16:sono_v=bar_v*b_weighting(f):basefreq=20:endfreq=20000:axis=0:text=0:axis_h=0:bar_h=0:bar_g=4:sono_g=4:timeclamp=0.2:count=5:fcount=10:csp=bt709, transpose=3,scale=out_color_matrix=bt709" -color_range 1 -colorspace bt709 -color_trc bt709 -color_primaries bt709 -movflags faststart -c:v libx264 -crf 28 -pix_fmt yuv420p -c:a aac -b:a 384k "%~dp1%~n1_sono.mp4"
 echo 
 pause
