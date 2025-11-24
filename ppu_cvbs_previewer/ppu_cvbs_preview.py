@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -94,15 +94,15 @@ def parse_argv(argv):
         "-ftype",
         "--fir_filter_type",
         choices=[
-            "sinc",
+            "lanczos",
             "gauss",
             "box",
             "kaiser",
             "firls",
         ],
-        nargs=2,
-        default=("sinc", "gauss"),
-        help = "FIR kernels for separating luma and chroma respectively. default = sinc, gauss.")
+        nargs="+",
+        default=None,
+        help = "1-2 FIR kernels for separating luma and chroma. Decoding filter used will automatically be FIR if this is specified. If one kernel is specified, it will be used for both luma and chroma separation.")
     parser.add_argument(
         "-full",
         "--full_resolution",
@@ -364,21 +364,32 @@ def configure_filters(
     # chosen to have not more than -12db gain at pixel frequency
     # while at the same time minimizing tap length
     # for px = -6db: 96+1 taps
-    kernel_taps =70+1
+    kernel_taps = 48+1 # M
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
-    bandwidth = 4/kernel_taps * PPU_Fs
+    bandwidth = 4/kernel_taps*PPU_Fs
 
-    hcutoff = PPU_Cb-(bandwidth / 2)
     cutoff = PPU_Cb-bandwidth
+
+    # magic number! align first notch to colorburst
+    lz_cutoff = PPU_Cb-(bandwidth/3)
 
     if PPU_Cb <= bandwidth:
         print_err_quit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb}")
 
-    sinc_kernel = np.sinc(2 * (hcutoff/PPU_Fs) * (np.arange(kernel_taps) - kernel_taps/2))
+    # sinc kernel
+    # Equation 16-1
+    # https://www.dspguide.com/ch16/1.htm
+    # sin(2*pi*fc*i) / i*pi
+    # 2*fc*sinc(2*fci)
 
-    sinc_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
-    sinc_kernel /= np.sum(sinc_kernel)
+    lanczos_kernel = 2 * (lz_cutoff/PPU_Fs) * np.sinc(
+        2 * (lz_cutoff/PPU_Fs) *
+        # shifted to range 0 to M
+        (np.arange(kernel_taps) - (kernel_taps/2))
+    ) * signal.windows.lanczos(kernel_taps)
+
+    lanczos_kernel /= np.sum(lanczos_kernel)
 
     gauss_kernel = signal.windows.gaussian(kernel_taps, 12)
     gauss_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
@@ -402,7 +413,7 @@ def configure_filters(
     )
 
     kernel_dict = {
-        "sinc": sinc_kernel,
+        "lanczos": lanczos_kernel,
         "gauss": gauss_kernel,
         "box": box_kernel,
         "kaiser": kaiser_kernel,
@@ -414,7 +425,10 @@ def configure_filters(
     match decoding_filter:
         case "fir":
             luma_kernel = kernel_dict[fir_filter_type[0]]
-            chroma_kernel = kernel_dict[fir_filter_type[1]]
+            if len(fir_filter_type) == 1:
+                chroma_kernel = kernel_dict[fir_filter_type[0]]
+            else:
+                chroma_kernel = kernel_dict[fir_filter_type[1]]
         case "3-line":
             b_luma, a_luma = signal.iirpeak(PPU_Cb, q, PPU_Fs)
         case _:
@@ -423,6 +437,9 @@ def configure_filters(
     if plot_filters:
         import matplotlib.pyplot as plt
         if decoding_filter == "fir":
+            plt.plot(luma_kernel)
+            plt.plot(chroma_kernel)
+            plt.show()
             w, h = signal.freqz(luma_kernel)
             x = w * PPU_Fs * 1.0 / (2 * np.pi)
             y = 20 * np.log10(abs(h))
@@ -720,6 +737,10 @@ def main(argv=None):
     avg = args.average and args.frames > 1
 
     frames = []
+
+    # if FIR filter type is mentioned, it implies FIR decoding filter
+    if args.fir_filter_type is not None:
+        args.decoding_filter = "fir"
 
     filter_config = configure_filters(
         args.ppu,

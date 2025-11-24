@@ -118,7 +118,7 @@ dither_ppucvbs_ph_0_2line.png: dither.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
 dither_ppucvbs_ph_0.png: dither.png
-	${PY} ppu_cvbs_preview.py -filt fir -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 $<
 
 usage.txt:
 	${RM} -r $@

@@ -2,7 +2,7 @@ usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
                            [-filt {fir,notch,2-line,3-line}]
-                           [-ftype {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}]
+                           [-ftype {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
                            input
@@ -37,9 +37,11 @@ options:
   -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
                         method for separating luma and chroma. default =
                         notch.
-  -ftype {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}, --fir_filter_type {sinc,gauss,box,kaiser,firls} {sinc,gauss,box,kaiser,firls}
-                        FIR kernels for separating luma and chroma
-                        respectively. default = sinc, gauss.
+  -ftype {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...], --fir_filter_type {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...]
+                        1-2 FIR kernels for separating luma and chroma.
+                        Decoding filter used will automatically be FIR if this
+                        is specified. If one kernel is specified, it will be
+                        used for both luma and chroma separation.
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. usable range: 1-3.
@@ -53,4 +55,4 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.5.1
+version 0.6.0
