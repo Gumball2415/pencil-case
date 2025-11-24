@@ -13,7 +13,7 @@ usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
                            [-phd PHASE_DISTORTION]
                            [-filt {fir,notch,2-line,3-line}]
-                           [-ftype {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...]]
+                           [-ftype {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
                            input
@@ -48,7 +48,7 @@ options:
   -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
                         method for separating luma and chroma. default =
                         notch.
-  -ftype {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...], --fir_filter_type {lanczos,gauss,box,kaiser,firls} [{lanczos,gauss,box,kaiser,firls} ...]
+  -ftype {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...], --fir_filter_type {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...]
                         1-2 FIR kernels for separating luma and chroma.
                         Decoding filter used will automatically be FIR if this
                         is specified. If one kernel is specified, it will be
@@ -66,7 +66,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.6.0
+version 0.7.0
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this

@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -87,14 +87,15 @@ def parse_argv(argv):
             "notch",
             "2-line",
             "3-line",
-        ],
+        ], 
         default="notch",
         help = "method for separating luma and chroma. default = notch.")
     parser.add_argument(
         "-ftype",
         "--fir_filter_type",
         choices=[
-            "lanczos",
+            "lanczos_lp",
+            "lanczos_notch",
             "gauss",
             "box",
             "kaiser",
@@ -358,24 +359,26 @@ def configure_filters(
     )
 
     # kernels
+
     box_kernel = np.full(12, 1, dtype=np.float64)
     box_kernel /= np.sum(box_kernel)
 
     # chosen to have not more than -12db gain at pixel frequency
     # while at the same time minimizing tap length
     # for px = -6db: 96+1 taps
-    kernel_taps = 48+1 # M
+    kernel_taps = 48 # M
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
-    bandwidth = 4/kernel_taps*PPU_Fs
-
-    cutoff = PPU_Cb-bandwidth
+    bandwidth =  4/(kernel_taps+1)
 
     # magic number! align first notch to colorburst
     lz_cutoff = PPU_Cb-(bandwidth/3)
 
-    if PPU_Cb <= bandwidth:
-        print_err_quit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb}")
+    band_hi_cutoff = PPU_Cb+(bandwidth*PPU_Fs/2)
+    band_lo_cutoff = PPU_Cb-(bandwidth*PPU_Fs/4)
+
+    if PPU_Cb/PPU_Fs <= bandwidth:
+        print_err_quit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb/PPU_Fs}")
 
     # sinc kernel
     # Equation 16-1
@@ -391,8 +394,28 @@ def configure_filters(
 
     lanczos_kernel /= np.sum(lanczos_kernel)
 
-    gauss_kernel = signal.windows.gaussian(kernel_taps, 12)
-    gauss_kernel *= signal.windows.kaiser(kernel_taps, signal.kaiser_beta(MIN_DB_GAIN))
+    # improvement by notching/bandpassing instead
+
+    lanczos_notch_kernel = 2 * (band_hi_cutoff/PPU_Fs) * np.sinc(
+        2 * (band_hi_cutoff/PPU_Fs) *
+        # shifted to range 0 to M
+        (np.arange(kernel_taps) - (kernel_taps/2))
+    )
+    lanczos_notch_kernel /= np.sum(lanczos_notch_kernel)
+    lanczos_notch_kernel *= -1.0
+    # augh why is the middle even
+    lanczos_notch_kernel[(kernel_taps)//2] += 1
+
+    lanczos_notch_kernel += 2 * (band_lo_cutoff/PPU_Fs) * np.sinc(
+        2 * (band_lo_cutoff/PPU_Fs) *
+        # shifted to range 0 to M
+        (np.arange(kernel_taps) - (kernel_taps/2))
+    )
+    lanczos_notch_kernel *= signal.windows.lanczos(kernel_taps)
+    lanczos_notch_kernel /= np.sum(lanczos_notch_kernel)
+
+    gauss_kernel = signal.windows.gaussian(kernel_taps, 10)
+    gauss_kernel *=  signal.windows.lanczos(kernel_taps)
     gauss_kernel /= np.sum(gauss_kernel)
 
     taps, beta = signal.kaiserord(MIN_DB_GAIN, 5e6/(PPU_Fs))
@@ -406,14 +429,15 @@ def configure_filters(
     )
 
     firls_kernel = signal.firls(
-        kernel_taps,
-        [0, cutoff, PPU_Cb, PPU_Fs/2],
+        kernel_taps+1,
+        [0, lz_cutoff, PPU_Cb, PPU_Fs/2],
         [1, 1, 0, 0],
         fs=PPU_Fs
     )
 
     kernel_dict = {
-        "lanczos": lanczos_kernel,
+        "lanczos_lp": lanczos_kernel,
+        "lanczos_notch": lanczos_notch_kernel,
         "gauss": gauss_kernel,
         "box": box_kernel,
         "kaiser": kaiser_kernel,
@@ -462,7 +486,7 @@ def configure_filters(
         plt.xlabel('Frequency [Hz]')
         plt.title('Frequency response')
         plt.grid(which='both', linestyle='-', color='grey')
-        plt.xticks([PPU_Fs/32, PPU_Fs/16, cutoff, PPU_Cb, PPU_Fs/2], ["px/2", "px", "cut", "cb", "nyquist"])
+        plt.xticks([PPU_Fs/32, PPU_Fs/16, PPU_Cb, PPU_Fs/2], ["px/2", "px","cb", "nyquist"])
         plt.show()
 
     return (luma_kernel, chroma_kernel, b_luma, a_luma, b_chroma, a_chroma, Fs_dt, r)

@@ -26,9 +26,9 @@ clean:
 	${RM} -r *_ppucvbs_ph_*.png
 
 # addie.png:			squeak! averaging test
-# dither.mp4			crosstalk tests
+# dither.mp4			FIR crosstalk tests
 # dither_2line.mp4:		2-line comb filter
-# dither_3line.mp4:		2-line comb filter
+# dither_3line.mp4:		3-line comb filter
 # 240pee.mp4:			PLUGE
 # 240pee_2_PAL.png:		comb filter test for PAL and NTSC
 # 240pee_2_NTSC.mp4:	comb filter test for PAL and NTSC
@@ -118,7 +118,7 @@ dither_ppucvbs_ph_0_2line.png: dither.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
 dither_ppucvbs_ph_0.png: dither.png
-	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos_notch gauss -frames 2 $<
 
 usage.txt:
 	${RM} -r $@
