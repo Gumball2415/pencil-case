@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -67,7 +67,7 @@ def parse_argv(argv):
         "-ppu",
         "--ppu",
         type=str,
-        help="PPU chip used for generating colors. default = 2C02",
+        help="Composite PPU chip used for generating colors. default = 2C02",
         choices=[
             "2C02",
             "2C07",
@@ -77,8 +77,16 @@ def parse_argv(argv):
         "-phd",
         "--phase_distortion",
         type = np.float64,
-        help = "amount of voltage-dependent impedance for RC lowpass, where RC = \"amount * (level/composite_white) * 1e-8\". this will also desaturate and hue shift the resulting colors nonlinearly. a value of 4 very roughly corresponds to a -5 degree delta per luma row. default = 4",
-        default = 4)
+        help = "amount of voltage-dependent impedance for RC lowpass, where RC = \"amount * (level/composite_white) * 1e-8\". this will also desaturate and hue shift the resulting colors nonlinearly. a value of 3 very roughly corresponds to a -5 degree delta per luma row. default = 3",
+        default = 3)
+    parser.add_argument(
+        "-x",
+        "--disable",
+        choices=[
+            "chroma",
+            "luma",
+        ], 
+        help = "Disables chroma by setting UV to 0. Disables luma by setting Y to 0.5.")
     parser.add_argument(
         "-filt",
         "--decoding_filter",
@@ -89,21 +97,27 @@ def parse_argv(argv):
             "3-line",
         ], 
         default="notch",
-        help = "method for separating luma and chroma. default = notch.")
+        help = "Method for complementary luma and chroma separation.\
+                default = notch.")
     parser.add_argument(
         "-ftype",
         "--fir_filter_type",
         choices=[
-            "lanczos_lp",
+            "lanczos",
             "lanczos_notch",
             "gauss",
             "box",
             "kaiser",
             "firls",
+            "nofilt",
         ],
         nargs="+",
-        default=None,
-        help = "1-2 FIR kernels for separating luma and chroma. Decoding filter used will automatically be FIR if this is specified. If one kernel is specified, it will be used for both luma and chroma separation.")
+        # default=["lanczos", "gauss"],
+        help = "FIR filter for complementary luma-chroma filtering and\
+            another FIR filter for lowpassing quadrature demodulated chroma.\
+            `decoding_filter` used will be deduced as FIR if this is\
+            specified. If one kernel is specified, it will be used for both\
+            filters.")
     parser.add_argument(
         "-full",
         "--full_resolution",
@@ -363,19 +377,14 @@ def configure_filters(
     box_kernel = np.full(12, 1, dtype=np.float64)
     box_kernel /= np.sum(box_kernel)
 
-    # chosen to have not more than -12db gain at pixel frequency
-    # while at the same time minimizing tap length
-    # for px = -6db: 96+1 taps
-    kernel_taps = 48 # M
+    kernel_taps = 12*4 # M
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
     bandwidth =  4/(kernel_taps+1)
 
-    # magic number! align first notch to colorburst
-    lz_cutoff = PPU_Cb-(bandwidth/3)
-
-    band_hi_cutoff = PPU_Cb+(bandwidth*PPU_Fs/2)
-    band_lo_cutoff = PPU_Cb-(bandwidth*PPU_Fs/4)
+    # magic numbers! align first notch to colorburst
+    band_lo_cutoff = PPU_Cb-(bandwidth*PPU_Fs/2.9)
+    band_hi_cutoff = PPU_Cb+(bandwidth*PPU_Fs/2.8)
 
     if PPU_Cb/PPU_Fs <= bandwidth:
         print_err_quit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb/PPU_Fs}")
@@ -384,38 +393,41 @@ def configure_filters(
     # Equation 16-1
     # https://www.dspguide.com/ch16/1.htm
     # sin(2*pi*fc*i) / i*pi
-    # 2*fc*sinc(2*fci)
+    # 2*fc* np.sinc(2*fc*i)
 
-    lanczos_kernel = 2 * (lz_cutoff/PPU_Fs) * np.sinc(
-        2 * (lz_cutoff/PPU_Fs) *
+    lanczos_kernel = 2 * (band_lo_cutoff/PPU_Fs) * np.sinc(
+        2 * (band_lo_cutoff/PPU_Fs) *
         # shifted to range 0 to M
         (np.arange(kernel_taps) - (kernel_taps/2))
-    ) * signal.windows.lanczos(kernel_taps)
+    )
 
+    lanczos_kernel *= signal.windows.lanczos(kernel_taps)
     lanczos_kernel /= np.sum(lanczos_kernel)
 
     # improvement by notching/bandpassing instead
-
     lanczos_notch_kernel = 2 * (band_hi_cutoff/PPU_Fs) * np.sinc(
         2 * (band_hi_cutoff/PPU_Fs) *
         # shifted to range 0 to M
         (np.arange(kernel_taps) - (kernel_taps/2))
     )
+    # spectral invert to highpass
     lanczos_notch_kernel /= np.sum(lanczos_notch_kernel)
     lanczos_notch_kernel *= -1.0
-    # augh why is the middle even
     lanczos_notch_kernel[(kernel_taps)//2] += 1
 
+    # add lowpass to turn it into bandlimit
     lanczos_notch_kernel += 2 * (band_lo_cutoff/PPU_Fs) * np.sinc(
         2 * (band_lo_cutoff/PPU_Fs) *
         # shifted to range 0 to M
         (np.arange(kernel_taps) - (kernel_taps/2))
     )
+
     lanczos_notch_kernel *= signal.windows.lanczos(kernel_taps)
     lanczos_notch_kernel /= np.sum(lanczos_notch_kernel)
 
-    gauss_kernel = signal.windows.gaussian(kernel_taps, 10)
-    gauss_kernel *=  signal.windows.lanczos(kernel_taps)
+    # align notch to cb
+    gauss_kernel = signal.windows.gaussian(kernel_taps, 9.5)
+    gauss_kernel *= signal.windows.lanczos(kernel_taps)
     gauss_kernel /= np.sum(gauss_kernel)
 
     taps, beta = signal.kaiserord(MIN_DB_GAIN, 5e6/(PPU_Fs))
@@ -429,19 +441,22 @@ def configure_filters(
     )
 
     firls_kernel = signal.firls(
-        kernel_taps+1,
-        [0, lz_cutoff, PPU_Cb, PPU_Fs/2],
+        (kernel_taps | 1),
+        [0, band_lo_cutoff, PPU_Cb, PPU_Fs/2],
         [1, 1, 0, 0],
         fs=PPU_Fs
     )
 
+    nofilt = np.array([1.0], dtype=np.float64)
+
     kernel_dict = {
-        "lanczos_lp": lanczos_kernel,
+        "lanczos": lanczos_kernel,
         "lanczos_notch": lanczos_notch_kernel,
         "gauss": gauss_kernel,
         "box": box_kernel,
         "kaiser": kaiser_kernel,
         "firls": firls_kernel,
+        "nofilt": nofilt,
     }
 
     # bandwidth: from 2px freq to colorburst frequency
@@ -461,8 +476,11 @@ def configure_filters(
     if plot_filters:
         import matplotlib.pyplot as plt
         if decoding_filter == "fir":
-            plt.plot(luma_kernel)
-            plt.plot(chroma_kernel)
+            plt.figure(figsize=(10,5))
+            plt.subplot(211)
+            plt.plot(luma_kernel, "o")
+            plt.subplot(212)
+            plt.plot(chroma_kernel, "o")
             plt.show()
             w, h = signal.freqz(luma_kernel)
             x = w * PPU_Fs * 1.0 / (2 * np.pi)
@@ -694,7 +712,8 @@ def encode_frame(raw_ppu,
         decoding_filter,
         skipdot = False,
         full_resolution = False,
-        debug = False
+        debug = False,
+        disable_yc = None,
     ):
 
     (luma_kernel, chroma_kernel, b_luma, a_luma, b_chroma, a_chroma, Fs_dt, r) = filter_config
@@ -734,6 +753,14 @@ def encode_frame(raw_ppu,
     # rescale to 0-100 IRE
     out *= 140
     out /= 100
+
+    # blank luma or chroma, if disabled
+    if disable_yc == "chroma":
+        out[:, :, 1] *= 0
+        out[:, :, 2] *= 0
+    elif disable_yc == "luma":
+        out[:, :, 0] = 0.5
+
     # convert to RGB
     if not debug:
         out = np.einsum('ij,klj->kli', np.linalg.inv(RGB_to_YUV), out, dtype=np.float64)
@@ -763,8 +790,12 @@ def main(argv=None):
     frames = []
 
     # if FIR filter type is mentioned, it implies FIR decoding filter
+    # only do so if we haven't mentioned any filters
     if args.fir_filter_type is not None:
         args.decoding_filter = "fir"
+    else:
+        if args.decoding_filter == "fir":
+            print_err_quit("no FIR filters specified.")
 
     filter_config = configure_filters(
         args.ppu,
@@ -782,7 +813,8 @@ def main(argv=None):
             args.decoding_filter,
             (not args.noskipdot),
             args.full_resolution,
-            args.debug
+            args.debug,
+            args.disable
         )
 
         frames.append((out, phase))

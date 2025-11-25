@@ -22,7 +22,7 @@ animlist := $(foreach o, ${animlist}, ${examples_dir}/${o}.mp4)
 all: examples
 
 clean:
-	${RM} -r ${examples_dir}
+	${RM} -r ${examples_dir}/*
 	${RM} -r *_ppucvbs_ph_*.png
 
 # addie.png:			squeak! averaging test
@@ -34,52 +34,63 @@ clean:
 # 240pee_2_NTSC.mp4:	comb filter test for PAL and NTSC
 # 240pee_3_comb.mp4:	sharpness tests
 # 240pee_3_comb.mp4:	sharpness tests
+# testcard.bin:			?
 
 ${examples_dir}:
 	mkdir $@ -p
 
+# animated examples
 ${examples_dir}/%.mp4: %_ppucvbs_ph_0.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i '${notdir ${basename $@}}_ppucvbs_ph_*.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
+
+# special cases due to duplicate names
 ${examples_dir}/240pee_2_NTSC.mp4: 240pee_2_ppucvbs_ph_0.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i '240pee_2_ppucvbs_ph_*.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
 ${examples_dir}/240pee_3_comb.mp4: 240pee_3_ppucvbs_ph_0_comb.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i '240pee_3_ppucvbs_ph_*_comb.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
 ${examples_dir}/240pee_3_box.mp4: 240pee_3_ppucvbs_ph_0_box.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i '240pee_3_ppucvbs_ph_*_box.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
 ${examples_dir}/dither_2line.mp4: dither_ppucvbs_ph_0_2line.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i 'dither_ppucvbs_ph_*_2line*.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
 ${examples_dir}/dither_3line.mp4: dither_ppucvbs_ph_0_3line.png
 	ffmpeg -framerate 60 -y -pattern_type glob -i 'dither_ppucvbs_ph_*_3line*.png' \
 	-t 2 \
-	-vf "[in]loop=loop=-1:size=3:start=0[out];[out]scale=out_color_matrix=smpte170m" \
-	-color_range 1 -colorspace smpte170m  -color_trc smpte170m  -color_primaries smpte170m  -movflags faststart \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-color_range 1 -colorspace bt709 -color_trc iec61966-2-1 \
+	-movflags faststart \
 	-c:v libx264 -crf 1 -preset superfast -pix_fmt yuv420p $@
 
+# specific rules for specific examples
 ${examples_dir}/addie.png: addie.bin
 	${PY} ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -avg -noskipdot $<
 	mv "addie_ppucvbs_ph_(0, 4, 8).png" $@
@@ -118,7 +129,7 @@ dither_ppucvbs_ph_0_2line.png: dither.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
 dither_ppucvbs_ph_0.png: dither.png
-	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos_notch gauss -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 $<
 
 usage.txt:
 	${RM} -r $@

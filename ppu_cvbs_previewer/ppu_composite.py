@@ -26,7 +26,7 @@ VERSION = "0.1.4"
 # signal LUTs
 # voltage highs and lows
 # from https://forums.nesdev.org/viewtopic.php?p=159266#p159266
-# signal[5][2][2] $0x-$3x, $x0/$xD, no emphasis/emphasis
+# signal[6][2][2] $0x-$3x, $x0/$xD, no emphasis/emphasis
 # 5th index is purely colorburst
 signal_table_composite = np.array([
     [

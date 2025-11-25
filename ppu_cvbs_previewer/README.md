@@ -11,9 +11,9 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 ```sh
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
-                           [-phd PHASE_DISTORTION]
+                           [-phd PHASE_DISTORTION] [-x {chroma,luma}]
                            [-filt {fir,notch,2-line,3-line}]
-                           [-ftype {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...]]
+                           [-ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
                            input
@@ -37,22 +37,27 @@ options:
   -pal PALETTE, --palette PALETTE
                         input 192-byte .pal file. default = "2C02.pal"
   -ppu {2C02,2C07}, --ppu {2C02,2C07}
-                        PPU chip used for generating colors. default = 2C02
+                        Composite PPU chip used for generating colors. default
+                        = 2C02
   -phd PHASE_DISTORTION, --phase_distortion PHASE_DISTORTION
                         amount of voltage-dependent impedance for RC lowpass,
                         where RC = "amount * (level/composite_white) * 1e-8".
                         this will also desaturate and hue shift the resulting
-                        colors nonlinearly. a value of 4 very roughly
+                        colors nonlinearly. a value of 3 very roughly
                         corresponds to a -5 degree delta per luma row. default
-                        = 4
+                        = 3
+  -x {chroma,luma}, --disable {chroma,luma}
+                        Disables chroma by setting UV to 0. Disables luma by
+                        setting Y to 0.5.
   -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
-                        method for separating luma and chroma. default =
-                        notch.
-  -ftype {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...], --fir_filter_type {lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} [{lanczos_lp,lanczos_notch,gauss,box,kaiser,firls} ...]
-                        1-2 FIR kernels for separating luma and chroma.
-                        Decoding filter used will automatically be FIR if this
-                        is specified. If one kernel is specified, it will be
-                        used for both luma and chroma separation.
+                        Method for complementary luma and chroma separation.
+                        default = notch.
+  -ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...], --fir_filter_type {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]
+                        FIR filter for complementary luma-chroma filtering and
+                        another FIR filter for lowpassing quadrature
+                        demodulated chroma. `decoding_filter` used will be
+                        deduced as FIR if this is specified. If one kernel is
+                        specified, it will be used for both filters.
   -full, --full_resolution
                         store the full framebuffer
   -frames FRAMES        render x consecutive frames. usable range: 1-3.
@@ -66,7 +71,7 @@ options:
   -noskipdot            turns off skipped dot rendering. equivalent to
                         rendering on 2C02s
 
-version 0.7.0
+version 0.8.0
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this
