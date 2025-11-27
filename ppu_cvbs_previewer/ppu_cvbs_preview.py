@@ -40,26 +40,31 @@ def parse_argv(argv):
     parser.add_argument(
         "--plot_filters",
         action="store_true",
-        help="plot chroma/luma filters. does not include filter response of comb filters.")
+        help="Plot chroma / luma filters. Not including the filter response\
+            of comb filters.")
     parser.add_argument(
         "-cxp",
         "--color_clock_phase",
         type=int,
         default=0,
-        help="starting clock phase of first frame. will affect all other phases. range: 0-11")
+        help="Starting clock phase of first frame. This will affect all\
+        proceeding phases. default = 0, range: 0-11")
     parser.add_argument(
         "input",
-        help="input 256x240 indexed .png screenshot. will save output as input_ppucvbs_ph_x.png",
+        help="Input 256x240 .png screenshot, index matched by input palette.\
+            Output will be saved as \"input_ppucvbs_ph_x.png\".",
         type=str)
     parser.add_argument(
         "-raw",
         "--raw_ppu_px",
         action="store_true",
-        help="input image is instead a 256x240 uint16_t array of raw 9-bit PPU pixels. format: EEELLCCCC")
+        help="Indicates input is a 256x240 uint16_t array of raw 9-bit PPU\
+            pixels. Bit format: xxxxxxxEEELLCCCC")
     parser.add_argument(
         "-pal",
         "--palette",
-        help="input 192-byte .pal file. default = \"2C02.pal\"",
+        help="Input 192-byte .pal file to index the input .png.\
+            Default = \"2C02.pal\"",
         type=str,
         default="2C02.pal"
         )
@@ -67,7 +72,8 @@ def parse_argv(argv):
         "-ppu",
         "--ppu",
         type=str,
-        help="Composite PPU chip used for generating colors. default = 2C02",
+        help="Composite PPU chip used for generating colors. Default =\
+            \"2C02\"",
         choices=[
             "2C02",
             "2C07",
@@ -77,7 +83,11 @@ def parse_argv(argv):
         "-phd",
         "--phase_distortion",
         type = np.float64,
-        help = "amount of voltage-dependent impedance for RC lowpass, where RC = \"amount * (level/composite_white) * 1e-8\". this will also desaturate and hue shift the resulting colors nonlinearly. a value of 3 very roughly corresponds to a -5 degree delta per luma row. default = 3",
+        help = "The amount of voltage-dependent impedance for RC lowpass, where\
+            RC = \"phd * (level/composite_white) * 1e-8\". See\
+            https://www.nesdev.org/wiki/NTSC_video#Simulating_differential_phase_distortion\
+            for more details.\
+            Default = 3",
         default = 3)
     parser.add_argument(
         "-x",
@@ -86,7 +96,8 @@ def parse_argv(argv):
             "chroma",
             "luma",
         ], 
-        help = "Disables chroma by setting UV to 0. Disables luma by setting Y to 0.5.")
+        help = "Disables chroma by setting UV to 0. Disables luma by setting Y\
+            to 0.5.")
     parser.add_argument(
         "-filt",
         "--decoding_filter",
@@ -98,7 +109,7 @@ def parse_argv(argv):
         ], 
         default="notch",
         help = "Method for complementary luma and chroma separation.\
-                default = notch.")
+                Default = \"notch\".")
     parser.add_argument(
         "-ftype",
         "--fir_filter_type",
@@ -122,26 +133,32 @@ def parse_argv(argv):
         "-full",
         "--full_resolution",
         action="store_true",
-        help="store the full framebuffer")
+        help="Saves full scanlines instead of a cropped output.\
+            Scanlines are scaled to 8x to preserve 1:1 pixel aspect ratio.")
     parser.add_argument(
         "-frames",
         type = int,
-        help="render x consecutive frames. usable range: 1-3. default = 1",
+        help="Render x consecutive frames. Usable range: 1-3. default = 1",
         default=1)
     parser.add_argument(
         "-avg",
         "--average",
         action="store_true",
-        help="use with -frames argument. averages all rendered frames into one. will save output as input_ppucvbs_ph_avg_x.png")
+        help="To be used with \"-frames\" argument. Averages all rendered\
+            frames into one.\
+            Output will be saved as input_ppucvbs_ph_avg_x.png")
     parser.add_argument(
         "-diff",
         "--difference",
         action="store_true",
-        help="use with -frames argument. calculates the absolute difference of the first two frames. will save output as input_ppucvbs_ph_avg_x.png")
+        help="To be used with \"-frames\" argument. Calculates the absolute\
+            difference of the first two frames.\
+            Output will be saved as input_ppucvbs_ph_avg_x.png")
     parser.add_argument(
         "-noskipdot",
         action="store_true",
-        help="turns off skipped dot rendering. equivalent to rendering on 2C02s")
+        help="Turns off skipped dot rendering, generating two chroma dot\
+            phases. Equivalent to rendering on 2C02s")
 
     return parser.parse_args(argv[1:])
 
