@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(

@@ -74,7 +74,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating two chroma
                         dot phases. Equivalent to rendering on 2C02s
 
-version 0.8.0
+version 0.8.1
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this
@@ -103,36 +103,53 @@ additionally, FFmpeg is required for animated .mp4 previews
 ## Examples
 
 - animated examples assembled from individual frames using FFmpeg.
+- an averaged .png frame is also shown due to GitHub not supporting .mp4 embeds.
 
-### 3-phase dot crawl (averaged and animated)
+### 3-phase dot crawl
 
-![3-phase dot crawl averaged](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
+![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
 
-![3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
+- [3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
 
 ### PLUGE test
 
-![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
+![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.png)
+
+- [PLUGE animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
 
 ### Comb filter tests for PAL and NTSC
 
 ![Comb filter test for PAL](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_PAL.png)
 
-![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.mp4)
+- no animation because PAL has static dot crawl
+
+![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.png)
+
+- [Comb filter test for NTSC animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.mp4)
 
 ### Sharpness tests for comb and box filter
 
-![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
+![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.png)
 
-![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4)
+- [Sharpness test: Comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
+
+![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.png)
+
+- [Sharpness test: Box filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4)
 
 ### Crosstalk tests
 
-![Crosstalk test: FIR filter (Sinc + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
+![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_lanczos_gauss.png)
 
-![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
+- [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
 
-![Crosstalk test: 3-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_3line.mp4)
+![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_2line.png)
+
+- [Crosstalk test: 2-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
+
+![Crosstalk test: 3-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_3line.png)
+
+- [Crosstalk test: 3-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_3line.mp4)
 
 ## [License](../LICENSE_MIT-0.txt)
 

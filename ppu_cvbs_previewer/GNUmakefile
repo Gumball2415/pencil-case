@@ -15,8 +15,6 @@ endif
 
 animlist := addie 240pee 240pee_2_NTSC 240pee_3_comb 240pee_3_box dither dither_2line dither_3line
 
-animlist := $(foreach o, ${animlist}, ${examples_dir}/${o}.mp4)
-
 .PHONY: usage.txt dither dither_2line dither_3line
 
 all: examples
@@ -27,17 +25,40 @@ clean:
 
 # addie.png:			squeak! averaging test
 # dither.mp4			FIR crosstalk tests
-# dither_2line.mp4:		2-line comb filter
-# dither_3line.mp4:		3-line comb filter
-# 240pee.mp4:			PLUGE
+# dither_2line.png/mp4:	2-line comb filter
+# dither_3line.png/mp4:	3-line comb filter
+# 240pee.png/mp4:		PLUGE
 # 240pee_2_PAL.png:		comb filter test for PAL and NTSC
-# 240pee_2_NTSC.mp4:	comb filter test for PAL and NTSC
-# 240pee_3_comb.mp4:	sharpness tests
-# 240pee_3_comb.mp4:	sharpness tests
+# 240pee_2_NTSC.png/mp4:	comb filter test for PAL and NTSC
+# 240pee_3_comb.png/mp4:	sharpness tests
+# 240pee_3_comb.png/mp4:	sharpness tests
 # testcard.bin:			?
 
 ${examples_dir}:
 	mkdir $@ -p
+usage.txt:
+	${RM} -r $@
+	${PY} ppu_cvbs_preview.py -h >> $@
+
+# TODO: deduplicate in a smarter way
+examples: ${examples_dir}\
+	${examples_dir}/addie.mp4\
+	${examples_dir}/addie.png\
+	${examples_dir}/240pee.png\
+	${examples_dir}/240pee.mp4\
+	${examples_dir}/240pee_2_NTSC.mp4\
+	${examples_dir}/240pee_2_NTSC.png\
+	${examples_dir}/240pee_2_PAL.png\
+	${examples_dir}/240pee_3_comb.png\
+	${examples_dir}/240pee_3_comb.mp4\
+	${examples_dir}/240pee_3_box.png\
+	${examples_dir}/240pee_3_box.mp4\
+	${examples_dir}/dither.mp4\
+	${examples_dir}/dither_fir_lanczos_gauss.png\
+	${examples_dir}/dither_2line.mp4\
+	${examples_dir}/dither_comb_2line.png\
+	${examples_dir}/dither_3line.mp4\
+	${examples_dir}/dither_comb_3line.png\
 
 # animated examples
 ${examples_dir}/%.mp4: %_ppucvbs_ph_0.png
@@ -101,6 +122,10 @@ addie_ppucvbs_ph_0.png: addie.bin
 240pee_ppucvbs_ph_0.png: 240pee.png
 	${PY} ppu_cvbs_preview.py -frames 2 $<
 
+${examples_dir}/240pee.png: 240pee.png
+	${PY} ppu_cvbs_preview.py -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
+
 ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
 	${PY} ppu_cvbs_preview.py -ppu 2C07 -filt 2-line $<
 	mv 240pee_2_ppucvbs_ph_0.png $@
@@ -108,31 +133,50 @@ ${examples_dir}/240pee_2_PAL.png: 240pee_2.png
 240pee_2_ppucvbs_ph_0.png: 240pee_2.png
 	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 
+${examples_dir}/240pee_2_NTSC.png: 240pee_2.png
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
+
 240pee_3_ppucvbs_ph_0_comb.png: 240pee_3.png
 	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_comb.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_comb.png
+
+${examples_dir}/240pee_3_comb.png: 240pee_3.png
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 240pee_3_ppucvbs_ph_0_box.png: 240pee_3.png
 	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png 240pee_3_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png 240pee_3_ppucvbs_ph_4_box.png
 
+${examples_dir}/240pee_3_box.png: 240pee_3.png
+	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
+
 dither_ppucvbs_ph_0_3line.png: dither.png
 	${PY} ppu_cvbs_preview.py -filt 3-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_3line.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_3line.png
+
+${examples_dir}/dither_comb_3line.png: dither.png
+	${PY} ppu_cvbs_preview.py -filt 3-line -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 dither_ppucvbs_ph_0_2line.png: dither.png
 	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png dither_ppucvbs_ph_0_2line.png
 	mv $(basename $<)_ppucvbs_ph_4.png dither_ppucvbs_ph_4_2line.png
 
+${examples_dir}/dither_comb_2line.png: dither.png
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
+
 dither_ppucvbs_ph_0.png: dither.png
 	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 $<
 
-usage.txt:
-	${RM} -r $@
-	${PY} ppu_cvbs_preview.py -h >> $@
+${examples_dir}/dither_fir_lanczos_gauss.png: dither.png
+	${PY} ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 -avg $<
+	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
-examples: ${examples_dir} ${examples_dir}/addie.png ${examples_dir}/240pee_2_PAL.png ${animlist} usage.txt
