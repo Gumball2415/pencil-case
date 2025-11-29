@@ -370,24 +370,10 @@ def configure_filters(
         )
 
     # dummy, will be overwritten
-    luma_kernel = chroma_kernel = b_luma = a_luma = 0
+    luma_kernel = chroma_kernel = b_luma = a_luma = b_chroma = a_chroma = 0
 
     MAX_DB_LOSS = 2
-    MIN_DB_GAIN = 65
-
-    # chroma filters
-    # SMPTE 170M-2004, page 5, section 7.2
-    passband = 2
-    stopband = 20
-    b_chroma, a_chroma = signal.iirdesign(
-        1.3e6,
-        3.6e6,
-        gpass=passband,
-        gstop=stopband,
-        analog=False,
-        ftype="butter",
-        fs=PPU_Fs
-    )
+    MIN_DB_GAIN = 20
 
     # kernels
 
@@ -395,9 +381,10 @@ def configure_filters(
     box_kernel /= np.sum(box_kernel)
 
     kernel_taps = 12*4 # M
+    kernel_odd = kernel_taps+1
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
-    bandwidth =  4/(kernel_taps+1)
+    bandwidth =  4/(kernel_odd)
 
     # magic numbers! align first notch to colorburst
     band_lo_cutoff = PPU_Cb-(bandwidth*PPU_Fs/2.9)
@@ -443,11 +430,13 @@ def configure_filters(
     lanczos_notch_kernel /= np.sum(lanczos_notch_kernel)
 
     # align notch to cb
-    gauss_kernel = signal.windows.gaussian(kernel_taps, 9.5)
-    gauss_kernel *= signal.windows.lanczos(kernel_taps)
+    # to align to -20dB from SMPTE 170M-2004, page 5, section 7.2
+    # use std=3.5
+    gauss_kernel = signal.windows.gaussian(kernel_odd, 9.4)
+    gauss_kernel *= signal.windows.lanczos(kernel_odd)
     gauss_kernel /= np.sum(gauss_kernel)
 
-    taps, beta = signal.kaiserord(MIN_DB_GAIN, 5e6/(PPU_Fs))
+    taps, beta = signal.kaiserord(MIN_DB_GAIN, 1.3e6/(PPU_Fs))
 
     kaiser_kernel = signal.firwin(
         taps,
@@ -458,7 +447,7 @@ def configure_filters(
     )
 
     firls_kernel = signal.firls(
-        (kernel_taps | 1),
+        kernel_odd,
         [0, band_lo_cutoff, PPU_Cb, PPU_Fs/2],
         [1, 1, 0, 0],
         fs=PPU_Fs
@@ -476,8 +465,6 @@ def configure_filters(
         "nofilt": nofilt,
     }
 
-    # bandwidth: from 2px freq to colorburst frequency
-    q = PPU_Cb/abs(PPU_Cb-(PPU_Fs/32))
     match decoding_filter:
         case "fir":
             luma_kernel = kernel_dict[fir_filter_type[0]]
@@ -485,10 +472,29 @@ def configure_filters(
                 chroma_kernel = kernel_dict[fir_filter_type[0]]
             else:
                 chroma_kernel = kernel_dict[fir_filter_type[1]]
-        case "3-line":
-            b_luma, a_luma = signal.iirpeak(PPU_Cb, q, PPU_Fs)
         case _:
-            b_luma, a_luma = signal.iirnotch(PPU_Cb, q, PPU_Fs)
+            # notch filter complementary decoding
+            bw = 1.3e6
+            b_luma, a_luma = signal.iirdesign(
+                [PPU_Cb-bw, PPU_Cb+bw],
+                [PPU_Cb, PPU_Cb],
+                gpass=MAX_DB_LOSS,
+                gstop=MIN_DB_GAIN,
+                analog=False,
+                ftype="butter",
+                fs=PPU_Fs
+            )
+            # chroma filters, used both in notch and comb filtering
+            # SMPTE 170M-2004, page 5, section 7.2
+            b_chroma, a_chroma = signal.iirdesign(
+                1.3e6,
+                3.6e6,
+                gpass=MAX_DB_LOSS,
+                gstop=MIN_DB_GAIN,
+                analog=False,
+                ftype="butter",
+                fs=PPU_Fs
+            )
 
     if plot_filters:
         import matplotlib.pyplot as plt
@@ -566,9 +572,14 @@ def yc_kernel(cvbs_ppu, kernel):
     return y_line, c_line
 
 def yc_notch(cvbs_ppu, b_notch, a_notch):
+    # Figure 9.35a
+    # Typical Simple Y/C Separator Complementary Filtering.
+    # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
+    # Demystified (5th ed., p. 448). Elsevier.
+    # https://archive.org/details/video-demystified-5th-edition/
     y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
     c_line = cvbs_ppu - y_line
-    return y_line, c_line, c_line
+    return y_line, c_line
 
 def yc_pal_delayline(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, scanline_0: bool):
     # bandpass and combine lines in specific way to retrieve U and V
@@ -604,7 +615,7 @@ def yc_comb_2line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, scanl
     y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
     return y_line, u_line, v_line, prev_line
 
-def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_peak, a_peak, pal_comb: bool, scanline_0: bool):
+def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, pal_comb: bool, scanline_0: bool):
     # Figure 9.45, Figure 9.47
     # Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and Video Processing
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
@@ -617,7 +628,8 @@ def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_peak, a_peak, pal_com
     c_line = prev_line[:, 0] - c_line
     if not pal_comb: c_line /= 2
 
-    c_line = signal.filtfilt(b_peak, a_peak, c_line)
+    # this is sharper than using an iirpeak
+    _, c_line = yc_notch(c_line, b_notch, a_notch)
 
     y_line = prev_line[:, 0] - c_line
 
@@ -666,7 +678,8 @@ def decode_scanline(
         case "3-line":
             YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, ppu_type == "2C07", scanline == 0)
         case "notch":
-            YUV_line[:, 0], u_line, v_line = yc_notch(cvbs_ppu, b_luma, a_luma)
+            YUV_line[:, 0], u_line = yc_notch(cvbs_ppu, b_luma, a_luma)
+            v_line = u_line
         case _:
             print_err_quit(f"unknown decoding filter option: {decoding_filter}")
 
