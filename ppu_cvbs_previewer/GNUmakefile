@@ -150,12 +150,12 @@ ${examples_dir}/240pee_3_comb.png: ${input_dir}/240pee_3.png
 	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 ${input_dir}/240pee_3_ppucvbs_ph_0_box.png: ${input_dir}/240pee_3.png
-	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -b 00  -frames 2 $<
 	mv $(basename $<)_ppucvbs_ph_0.png $(basename $<)_ppucvbs_ph_0_box.png
 	mv $(basename $<)_ppucvbs_ph_4.png $(basename $<)_ppucvbs_ph_4_box.png
 
 ${examples_dir}/240pee_3_box.png: ${input_dir}/240pee_3.png
-	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 -avg $<
+	${PY} ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 -b 00  -avg $<
 	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 ${input_dir}/dither_ppucvbs_ph_0_3line.png: ${input_dir}/dither.png

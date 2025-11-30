@@ -1,12 +1,23 @@
 # PPU Composite Previewer
 
-Previews an NES screenshot.
+Filters an NES screenshot to NES composite.
 
 ## About
 
 it was difficult screenshotting Mesen all the time so i made this instead.
 
 ## Usage
+
+- if you require emphasis effects, a raw `.bin` PPU buffer is the only way to
+  get a reliable image, as the .png quantizer can only consider non-emphasis
+  colors.
+- the script outputs the next `color_clock_phase` for the succeeding frame.
+  - this is meant to facilitate external conversion scripts such as encoding a
+    video frame-by-frame, where the phase output will feed into the next frame's
+    phase input.
+- by default, PPU "rendering" will be assumed to be on.
+  - this means skipped dot rendering on odd frames, meaning that scanline 0 may
+    be visibly truncated by one pixel.
 
 ```sh
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
@@ -80,11 +91,6 @@ options:
 
 version 0.9.0
 ```
-
-- the script outputs the next `color_clock_phase` for the succeeding frame. this
-  is meant to facilitate external conversion scripts such as encoding a video
-  frame-by-frame, where the phase output will feed into the next frame's phase
-  input.
 
 ## Requirements
 
