@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -60,6 +60,13 @@ def parse_argv(argv):
         action="store_true",
         help="Indicates input is a 256x240 uint16_t array of raw 9-bit PPU\
             pixels. Bit format: xxxxxxxEEELLCCCC")
+    parser.add_argument(
+        "-b",
+        "--backdrop",
+        type=str,
+        default="0F",
+        help="Backdrop color index in hexadecimal (00-3F), used for NTSC active\
+            video border. Default= \"0F\"")
     parser.add_argument(
         "-pal",
         "--palette",
@@ -157,7 +164,7 @@ def parse_argv(argv):
     parser.add_argument(
         "-noskipdot",
         action="store_true",
-        help="Turns off skipped dot rendering, generating two chroma dot\
+        help="Turns off skipped dot rendering, generating three chroma dot\
             phases. Equivalent to rendering on 2C02s")
 
     return parser.parse_args(argv[1:])
@@ -253,7 +260,7 @@ class RasterTimings:
     F_PORCH: int
     CBURST_PHASE: int
 
-    # todo: change to use more complete ppu buffer
+    # in NTSC, this fills active video
     BACKDROP: int
 
     PIXEL_SIZE: int
@@ -302,7 +309,7 @@ def RC_lowpass(signal, amount, dt):
         # we approximate this by using the raw signal's voltage
         # https://forums.nesdev.org/viewtopic.php?p=287241#p287241
         # the phase shifts negative on higher levels according to https://forums.nesdev.org/viewtopic.php?p=186297#p186297
-        v_prev_norm = signal[i] / ppu.composite_white
+        v_prev_norm = signal[i] / ppu.WHITE_LEVEL
 
         # RC constant tuned so that 0x and 3x colors have around 14 degree delta when phd = 3
         # https://forums.nesdev.org/viewtopic.php?p=186297#p186297
@@ -326,6 +333,7 @@ def configure_filters(
         ppu_type: str,
         fir_filter_type,
         decoding_filter: str,
+        backdrop: int,
         plot_filters: bool = False
     ):
     
@@ -349,7 +357,7 @@ def configure_filters(
             F_PORCH = 9,
             CBURST_PHASE = (7-6)%12,
             PIXEL_SIZE = 8,
-            BACKDROP = 0x0F,
+            BACKDROP = ppu.BLANK_INDEX,
             SCANLINES = 312
         )
     else:
@@ -365,7 +373,7 @@ def configure_filters(
             F_PORCH = 9,
             CBURST_PHASE = (8-6)%12,
             PIXEL_SIZE = 8,
-            BACKDROP = 0x0F,
+            BACKDROP = backdrop,
             SCANLINES = 262
         )
 
@@ -533,38 +541,64 @@ def configure_filters(
     return (luma_kernel, chroma_kernel, b_luma, a_luma, b_chroma, a_chroma, Fs_dt, r)
 
 # filters one line of raw ppu pixels
+# returns raw voltage and next phase
 def encode_scanline(data,
     starting_phase: int,
     phd: int,
     scanline: int,
     Fs_dt: float,
     r: RasterTimings,
-    alternate_line = False
+    alternate_line = False,
+    skip_dot = False,
     ):
 
-    raw_ppu = np.full(r.PIXELS_PER_SCANLINE, ppu.BLANK_LEVEL, dtype=np.int16)
+    raw_ppu = np.full(r.PIXELS_PER_SCANLINE, ppu.BLANK_INDEX, dtype=np.int16)
     cvbs_ppu = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
     
-    raw_ppu[0:r.HSYNC] = ppu.SYNC_LEVEL
-    raw_ppu[r.HSYNC:] = ppu.BLANK_LEVEL
-    raw_ppu[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST
+    raw_ppu[0:r.HSYNC] = ppu.SYNC_INDEX
+    raw_ppu[r.HSYNC:] = ppu.BLANK_INDEX
+    raw_ppu[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
+    raw_ppu[r.BEFORE_VID:r.BEFORE_ACTIVE] = r.BACKDROP
     raw_ppu[r.BEFORE_ACTIVE:r.AFTER_ACTIVE] = data
+    raw_ppu[r.AFTER_ACTIVE:r.AFTER_VID] = r.BACKDROP
     if r.PULSE != 0:
         raw_ppu[r.PULSE_INDEX] &= 0xF0
+    scanline_phase = starting_phase
 
-    scanline_phase = (starting_phase + scanline*r.SAMPLES_PER_SCANLINE) % 12
+    # implement skipped dot by rolling the portion of video
 
+    px_index = 0
     # encode one scanline, then lowpass it accordingly
     for pixel in range(raw_ppu.shape[0]):
+        # dot skip
+        # dot 340, scanline 0
+        if pixel == (r.BEFORE_ACTIVE - 2) and skip_dot:
+            continue
+
         for sample in range(r.PIXEL_SIZE):
             # todo: concurrency
-            phase = (scanline_phase + pixel*r.PIXEL_SIZE + sample) % 12
-            cvbs_ppu[pixel*r.PIXEL_SIZE + sample] = ppu.encode_composite_sample(raw_ppu[pixel], phase, False, r.CBURST_PHASE, alternate_line)
+            cvbs_ppu[px_index*r.PIXEL_SIZE + sample] = ppu.encode_composite_sample(
+                raw_ppu[pixel],
+                scanline_phase,
+                False,
+                r.CBURST_PHASE,
+                alternate_line
+            )
+            scanline_phase = (scanline_phase + 1) % 12
+
+        # due to skipped dot, the raw PPU index
+        # and the encoded index is unsynced
+        px_index += 1
+
+    # fill the remaining pixel with sync
+    if px_index != r.PIXELS_PER_SCANLINE:
+        cvbs_ppu[-r.PIXEL_SIZE:] = ppu.SYNC_LEVEL
+
     # lowpass
     if phd != 0:
         cvbs_ppu = RC_lowpass(cvbs_ppu, phd, Fs_dt)
 
-    return cvbs_ppu
+    return cvbs_ppu, scanline_phase
 
 def yc_kernel(cvbs_ppu, kernel):
     y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
@@ -662,7 +696,7 @@ def decode_scanline(
     ):
 
     # normalize blank/black
-    cvbs_ppu -= ppu.composite_black
+    cvbs_ppu -= ppu.BLANK_LEVEL
     YUV_line = np.zeros((r.SAMPLES_PER_SCANLINE, 3), dtype=np.float64)
 
     # separate luma and chroma
@@ -753,12 +787,22 @@ def encode_frame(raw_ppu,
     # dummy; will be overwritten with an array
     prev_line = 0
 
+    # hack! keep track of oddness of rendered frames overall
+    global is_odd_frame
+    is_odd_frame = not is_odd_frame
+
+    if ppu_type == "2C07": skipdot = False
+    skip = skipdot and is_odd_frame
+
+    next_phase = starting_phase % 12
+
     for scanline in range(raw_ppu.shape[0]):
         # todo: concurrency for non-comb filter decoding
         alternate_line = ppu_type == "2C07" and (scanline % 2 == 0)
 
         # encode scanline
-        cvbs_ppu = encode_scanline(raw_ppu[scanline], starting_phase, phd, scanline, Fs_dt, r, alternate_line)
+        skip &= (scanline==0)
+        cvbs_ppu, next_phase = encode_scanline(raw_ppu[scanline], next_phase, phd, scanline, Fs_dt, r, alternate_line, skip)
 
         # deccode scanline
         out[scanline], prev_line = decode_scanline(
@@ -776,13 +820,15 @@ def encode_frame(raw_ppu,
             debug
         )
 
+    # account for the rest of the scanlines
+    next_phase = ((next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE) % 12
+
     # crop image
     if not (full_resolution or debug):
         out = out[:, r.BEFORE_VID*r.PIXEL_SIZE:r.AFTER_VID*r.PIXEL_SIZE, :]
 
-    # rescale to 0-100 IRE
-    out *= 140
-    out /= 100
+    # rescale to PPU white
+    out /= (ppu.WHITE_LEVEL - ppu.BLACK_LEVEL)
 
     # blank luma or chroma, if disabled
     if disable_yc == "chroma":
@@ -796,13 +842,6 @@ def encode_frame(raw_ppu,
         out = np.einsum('ij,klj->kli', np.linalg.inv(RGB_to_YUV), out, dtype=np.float64)
     # fit RGB within range of 0.0-1.0
     np.clip(out, 0, 1, out=out)
-
-    global is_odd_frame
-    is_odd_frame ^= is_odd_frame
-
-    if ppu_type == "2C07": skipdot = False
-    dot = r.PIXEL_SIZE if skipdot and is_odd_frame else 0
-    next_phase = (starting_phase + r.SAMPLES_PER_SCANLINE*r.SCANLINES - dot) % 12
 
     return out, next_phase
 
@@ -831,11 +870,13 @@ def main(argv=None):
         args.ppu,
         args.fir_filter_type,
         args.decoding_filter,
+        int(args.backdrop, 16),
         args.plot_filters
     )
 
     for _ in range(args.frames):
-        out, nextphase = encode_frame(raw_ppu,
+        prev = phase
+        out, phase = encode_frame(raw_ppu,
             args.ppu,
             phase,
             args.phase_distortion,
@@ -847,12 +888,11 @@ def main(argv=None):
             args.disable
         )
 
-        frames.append((out, phase))
+        frames.append((out, prev))
 
         if not (avg or args.difference):
-            print(nextphase)
-            save_image(args.input, out, phase, args.full_resolution, args.debug)
-        phase = nextphase
+            print(prev)
+            save_image(args.input, out, prev, args.full_resolution, args.debug)
 
     if avg or args.difference:
         images, phases = zip(*frames)

@@ -10,8 +10,9 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 
 ```sh
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
-                           [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
-                           [-phd PHASE_DISTORTION] [-x {chroma,luma}]
+                           [-raw] [-b BACKDROP] [-pal PALETTE]
+                           [-ppu {2C02,2C07}] [-phd PHASE_DISTORTION]
+                           [-x {chroma,luma}]
                            [-filt {fir,notch,2-line,3-line}]
                            [-ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
@@ -35,6 +36,9 @@ options:
                         all proceeding phases. default = 0, range: 0-11
   -raw, --raw_ppu_px    Indicates input is a 256x240 uint16_t array of raw
                         9-bit PPU pixels. Bit format: xxxxxxxEEELLCCCC
+  -b BACKDROP, --backdrop BACKDROP
+                        Backdrop color index in hexadecimal (00-3F), used for
+                        NTSC active video border. Default= "0F"
   -pal PALETTE, --palette PALETTE
                         Input 192-byte .pal file to index the input .png.
                         Default = "2C02.pal"
@@ -71,10 +75,10 @@ options:
   -diff, --difference   To be used with "-frames" argument. Calculates the
                         absolute difference of the first two frames. Output
                         will be saved as input_ppucvbs_ph_avg_x.png
-  -noskipdot            Turns off skipped dot rendering, generating two chroma
-                        dot phases. Equivalent to rendering on 2C02s
+  -noskipdot            Turns off skipped dot rendering, generating three
+                        chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.8.1
+version 0.9.0
 ```
 
 - the script outputs the next `color_clock_phase` for the succeeding frame. this
@@ -103,9 +107,13 @@ additionally, FFmpeg is required for animated .mp4 previews
 ## Examples
 
 - animated examples assembled from individual frames using FFmpeg.
-- an averaged .png frame is also shown due to GitHub not supporting .mp4 embeds.
+- an averaged (`-avg`) .png frame is also shown due to GitHub not supporting .mp4 embeds.
 
 ### 3-phase dot crawl
+
+```sh
+python3 ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -noskipdot input/addie.bin
+```
 
 ![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
 
@@ -113,15 +121,27 @@ additionally, FFmpeg is required for animated .mp4 previews
 
 ### PLUGE test
 
+```sh
+python3 ppu_cvbs_preview.py -frames 2 input/240pee.png
+```
+
 ![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.png)
 
 - [PLUGE animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
 
 ### Comb filter tests for PAL and NTSC
 
+```sh
+python3 ppu_cvbs_preview.py -ppu 2C07 -filt 2-line -b 00 input/240pee_2.png
+```
+
 ![Comb filter test for PAL](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_PAL.png)
 
 - no animation because PAL has static dot crawl
+
+```sh
+python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_2.png
+```
 
 ![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.png)
 
@@ -129,9 +149,17 @@ additionally, FFmpeg is required for animated .mp4 previews
 
 ### Sharpness tests for comb and box filter
 
+```sh
+python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_3.png
+```
+
 ![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.png)
 
 - [Sharpness test: Comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
+
+```sh
+python3 ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 input/240pee_3.png
+```
 
 ![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.png)
 
@@ -139,13 +167,25 @@ additionally, FFmpeg is required for animated .mp4 previews
 
 ### Crosstalk tests
 
+```sh
+python3 ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 input/dither.png
+```
+
 ![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_lanczos_gauss.png)
 
 - [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
 
+```sh
+python3 ppu_cvbs_preview.py -filt 2-line -frames 2 input/dither.png
+```
+
 ![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_2line.png)
 
 - [Crosstalk test: 2-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
+
+```sh
+python3 ppu_cvbs_preview.py -filt 3-line -frames 2 input/dither.png
+```
 
 ![Crosstalk test: 3-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_3line.png)
 

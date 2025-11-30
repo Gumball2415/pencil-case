@@ -21,7 +21,7 @@ import argparse
 import sys
 import numpy as np
 
-VERSION = "0.1.4"
+VERSION = "0.2.0"
 
 # signal LUTs
 # voltage highs and lows
@@ -59,12 +59,15 @@ signal_table_composite = np.array([
 
 # first 512 entries are exclusively for the 9-bit PPU pixel format: "eeellcccc".
 # these additional entries are bitshifted to avoid collisions
-SYNC_LEVEL = 1 << 9
-BLANK_LEVEL = 2 << 9
-COLORBURST = 3 << 9
+SYNC_INDEX = 1 << 9
+BLANK_INDEX = 2 << 9
+COLORBURST_INDEX = 3 << 9
 
-composite_white = signal_table_composite[3, 0, 0]
-composite_black = signal_table_composite[1, 1, 0]
+SYNC_LEVEL = signal_table_composite[5, 0, 0]
+BLANK_LEVEL = signal_table_composite[5, 1, 0]
+
+WHITE_LEVEL = signal_table_composite[3, 0, 0]
+BLACK_LEVEL = signal_table_composite[1, 1, 0]
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -112,12 +115,12 @@ def encode_composite_sample(
     cburst_phase: int,
     alternate_line=False):
 
-    if pixel >= SYNC_LEVEL:
-        if pixel == SYNC_LEVEL:
+    if pixel >= SYNC_INDEX:
+        if pixel == SYNC_INDEX:
             return signal_table_composite[5, 0, 0]
-        elif pixel == BLANK_LEVEL:
+        elif pixel == BLANK_INDEX:
             return signal_table_composite[5, 1, 0]
-        elif pixel == COLORBURST:
+        elif pixel == COLORBURST_INDEX:
             return signal_table_composite[4, int(in_color_phase(cburst_phase, wave_phase, alternate_line)), 0]
         else:
             sys.exit(f"invalid PPU pixel. got {pixel:04X}")

@@ -14,11 +14,9 @@ else
 	PY := python3
 endif
 
-animlist := addie 240pee 240pee_2_NTSC 240pee_3_comb 240pee_3_box dither dither_2line dither_3line
+.PHONY: usage.txt examples
 
-.PHONY: usage.txt dither dither_2line dither_3line
-
-all: examples
+all: examples usage.txt
 
 clean:
 	${RM} -r ${examples_dir}/*
@@ -132,23 +130,23 @@ ${examples_dir}/240pee.png: ${input_dir}/240pee.png
 	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 ${examples_dir}/240pee_2_PAL.png: ${input_dir}/240pee_2.png
-	${PY} ppu_cvbs_preview.py -ppu 2C07 -filt 2-line $<
+	${PY} ppu_cvbs_preview.py -ppu 2C07 -filt 2-line -b 00 $<
 	mv $(basename $<)_ppucvbs_ph_0.png $@
 
 ${input_dir}/240pee_2_ppucvbs_ph_0.png: ${input_dir}/240pee_2.png
-	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 $<
 
 ${examples_dir}/240pee_2_NTSC.png: ${input_dir}/240pee_2.png
-	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -avg $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 -avg $<
 	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 ${input_dir}/240pee_3_ppucvbs_ph_0_comb.png: ${input_dir}/240pee_3.png
-	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 $<
 	mv $(basename $<)_ppucvbs_ph_0.png $(basename $<)_ppucvbs_ph_0_comb.png
 	mv $(basename $<)_ppucvbs_ph_4.png $(basename $<)_ppucvbs_ph_4_comb.png
 
 ${examples_dir}/240pee_3_comb.png: ${input_dir}/240pee_3.png
-	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -avg $<
+	${PY} ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 -avg $<
 	mv "$(basename $<)_ppucvbs_ph_(0, 4).png" $@
 
 ${input_dir}/240pee_3_ppucvbs_ph_0_box.png: ${input_dir}/240pee_3.png

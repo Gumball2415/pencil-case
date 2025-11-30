@@ -1,6 +1,7 @@
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
-                           [-raw] [-pal PALETTE] [-ppu {2C02,2C07}]
-                           [-phd PHASE_DISTORTION] [-x {chroma,luma}]
+                           [-raw] [-b BACKDROP] [-pal PALETTE]
+                           [-ppu {2C02,2C07}] [-phd PHASE_DISTORTION]
+                           [-x {chroma,luma}]
                            [-filt {fir,notch,2-line,3-line}]
                            [-ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
@@ -24,6 +25,9 @@ options:
                         all proceeding phases. default = 0, range: 0-11
   -raw, --raw_ppu_px    Indicates input is a 256x240 uint16_t array of raw
                         9-bit PPU pixels. Bit format: xxxxxxxEEELLCCCC
+  -b BACKDROP, --backdrop BACKDROP
+                        Backdrop color index in hexadecimal (00-3F), used for
+                        NTSC active video border. Default= "0F"
   -pal PALETTE, --palette PALETTE
                         Input 192-byte .pal file to index the input .png.
                         Default = "2C02.pal"
@@ -60,7 +64,7 @@ options:
   -diff, --difference   To be used with "-frames" argument. Calculates the
                         absolute difference of the first two frames. Output
                         will be saved as input_ppucvbs_ph_avg_x.png
-  -noskipdot            Turns off skipped dot rendering, generating two chroma
-                        dot phases. Equivalent to rendering on 2C02s
+  -noskipdot            Turns off skipped dot rendering, generating three
+                        chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.8.1
+version 0.9.0
