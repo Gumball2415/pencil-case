@@ -819,7 +819,7 @@ def encode_frame(raw_ppu,
 
     for scanline in range(raw_ppu.shape[0]):
         # todo: concurrency for non-comb filter decoding
-        alternate_line = ppu_type == "2C07" and (scanline % 2 == 0)
+        alternate_line = ppu_type == "2C07" and (scanline % 2 == 1)
 
         # encode scanline
         skip &= (scanline==0)
@@ -888,13 +888,13 @@ def main(argv=None):
     # according to Figure 3 on BT.1700
     if args.ppu == "2C07":
         raw_ppu = np.append(
-            np.full((24, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
+            np.full((13, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
             raw_ppu,
             axis=0
         )
         raw_ppu = np.append(
             raw_ppu,
-            np.full((24, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
+            np.full((35, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
             axis=0
         )
 
