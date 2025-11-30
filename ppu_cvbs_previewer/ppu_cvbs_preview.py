@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -232,14 +232,27 @@ def parse_indexed_png(file: str, palfile: str):
         return np.array(im, dtype=int)
 
 # save image
-def save_image(input: str, out, phases, full_resolution = False, debug = False):
+def save_image(
+        ppu_type: str,
+        input: str,
+        out,
+        phases,
+        full_resolution = False,
+        debug = False
+    ):
+    if ppu_type == "2C07":
+        out_width=768
+        out_height=576
+    else:
+        out_width=640
+        out_height=480
     with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
     # scale image
         if (full_resolution or debug):
             imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*8)), Image.Resampling.NEAREST)
         else:
-            imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-            imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), Image.Resampling.NEAREST)
+            imageout = imageout.resize((out_width, imageout.size[1]), resample=Image.Resampling.LANCZOS)
+            imageout = imageout.resize((imageout.size[0], out_height), Image.Resampling.NEAREST)
         imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
 
 
@@ -542,14 +555,16 @@ def configure_filters(
 
 # filters one line of raw ppu pixels
 # returns raw voltage and next phase
-def encode_scanline(data,
-    starting_phase: int,
-    phd: int,
-    scanline: int,
-    Fs_dt: float,
-    r: RasterTimings,
-    alternate_line = False,
-    skip_dot = False,
+def encode_scanline(
+        ppu_type: str,
+        data,
+        starting_phase: int,
+        phd: int,
+        scanline: int,
+        Fs_dt: float,
+        r: RasterTimings,
+        alternate_line = False,
+        skip_dot = False,
     ):
 
     raw_ppu = np.full(r.PIXELS_PER_SCANLINE, ppu.BLANK_INDEX, dtype=np.int16)
@@ -559,7 +574,13 @@ def encode_scanline(data,
     raw_ppu[r.HSYNC:] = ppu.BLANK_INDEX
     raw_ppu[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
     raw_ppu[r.BEFORE_VID:r.BEFORE_ACTIVE] = r.BACKDROP
-    raw_ppu[r.BEFORE_ACTIVE:r.AFTER_ACTIVE] = data
+
+    # PAL crop
+    if ppu_type =="2C07":
+        if scanline != 0:
+            raw_ppu[r.BEFORE_ACTIVE+2:r.AFTER_ACTIVE-2] = data[2 :-2]
+    else:
+        raw_ppu[r.BEFORE_ACTIVE:r.AFTER_ACTIVE] = data
     raw_ppu[r.AFTER_ACTIVE:r.AFTER_VID] = r.BACKDROP
     if r.PULSE != 0:
         raw_ppu[r.PULSE_INDEX] &= 0xF0
@@ -802,7 +823,17 @@ def encode_frame(raw_ppu,
 
         # encode scanline
         skip &= (scanline==0)
-        cvbs_ppu, next_phase = encode_scanline(raw_ppu[scanline], next_phase, phd, scanline, Fs_dt, r, alternate_line, skip)
+        cvbs_ppu, next_phase = encode_scanline(
+            ppu_type,
+            raw_ppu[scanline],
+            next_phase,
+            phd,
+            scanline,
+            Fs_dt,
+            r,
+            alternate_line,
+            skip
+        )
 
         # deccode scanline
         out[scanline], prev_line = decode_scanline(
@@ -823,7 +854,7 @@ def encode_frame(raw_ppu,
     # account for the rest of the scanlines
     next_phase = ((next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE) % 12
 
-    # crop image
+    # crop image to active video
     if not (full_resolution or debug):
         out = out[:, r.BEFORE_VID*r.PIXEL_SIZE:r.AFTER_VID*r.PIXEL_SIZE, :]
 
@@ -851,6 +882,21 @@ def main(argv=None):
     raw_ppu = np.zeros((240, 256), dtype=np.int16)
     if args.raw_ppu_px: raw_ppu = parse_raw_ppu_px(args.input)
     else: raw_ppu = parse_indexed_png(args.input, args.palette)
+
+
+    # PAL: extend with 13 scanlines on top and 35 on bottom
+    # according to Figure 3 on BT.1700
+    if args.ppu == "2C07":
+        raw_ppu = np.append(
+            np.full((24, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
+            raw_ppu,
+            axis=0
+        )
+        raw_ppu = np.append(
+            raw_ppu,
+            np.full((24, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
+            axis=0
+        )
 
     phase = args.color_clock_phase
 
@@ -892,7 +938,7 @@ def main(argv=None):
 
         if not (avg or args.difference):
             print(prev)
-            save_image(args.input, out, prev, args.full_resolution, args.debug)
+            save_image(args.ppu, args.input, out, prev, args.full_resolution, args.debug)
 
     if avg or args.difference:
         images, phases = zip(*frames)
@@ -903,7 +949,7 @@ def main(argv=None):
         elif args.difference:
             out = images[0] - images[1]
             out = np.absolute(out)
-        save_image(args.input, out, phases, args.full_resolution, args.debug)
+        save_image(args.ppu, args.input, out, phases, args.full_resolution, args.debug)
 
 if __name__=='__main__':
     main(sys.argv)
