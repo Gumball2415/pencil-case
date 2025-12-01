@@ -9,14 +9,27 @@ it was difficult doing dithering in GIMP so i caved in and made a python script 
 most of it based on https://bisqwit.iki.fi/story/howto/dither/jy/ \
 equations from http://brucelindbloom.com/index.html?Math.html
 
+## Requirements
+
+- See `requirements.txt` for details.
+
+### Libraries
+
+For python:
+
+```python
+numpy==2.3.5
+Pillow==12.0.0
+```
+
 ## Example
 
 ![An image of a Famicom being illuminated by a TV](fami.png)![An image of a Famicom being illuminated by a TV](fami_n8m5_dither.png)
 
 This image was generated with the following arguments:
 
-```
-ditherer.py masks\n8m5.png fami.png -pal #000000 #61006d #8220f6 #ffffff -gam 1.5
+```sh
+python3 ditherer.py masks/n8m5.png fami.png -pal 000000 61006d 8220f6 ffffff -gam 1
 ```
 
 ## [License](../LICENSE_MIT-0.txt)

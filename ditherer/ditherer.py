@@ -55,7 +55,8 @@ def parse_argv(argv):
         "-pal",
         "--palette",
         nargs="+",
-        help="palette array, in #rrggbb hex")
+        type=str,
+        help="palette array, in rrggbb hex. the \"#\" symbol is omitted to be shell-agnostic.")
     parser.add_argument(
         "mask",
         help="input .png dither mask")
@@ -160,8 +161,8 @@ def main(argv=None):
     args = parse_argv(argv or sys.argv)
 
     deltae = deltae_func[args.deltae]
-    
-    palette = np.array([ImageColor.getrgb(color) for color in args.palette], dtype=np.float64)
+
+    palette = np.array([ImageColor.getrgb("#"+color) for color in args.palette], dtype=np.float64)
     # flatten palette?
     # palette = [value for sublist in palette for value in sublist]
 
