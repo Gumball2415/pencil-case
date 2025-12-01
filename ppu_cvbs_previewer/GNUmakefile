@@ -4,6 +4,7 @@
 
 examples_dir := docs
 input_dir := input
+venv_dir := .ppu_env
 
 # taken from NROM template
 ifeq (${OS}, Windows_NT)
@@ -35,9 +36,14 @@ clean:
 
 ${examples_dir}:
 	mkdir $@ -p
+
 usage.txt:
 	${RM} -r $@
 	${PY} ppu_cvbs_preview.py -h >> $@
+
+requirements.txt:
+	${RM} -r $@
+	pipreqs ./ --force --ignore ${venv_dir}
 
 # TODO: deduplicate in a smarter way
 examples: ${examples_dir}\

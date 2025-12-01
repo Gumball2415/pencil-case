@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -970,7 +970,7 @@ def main(argv=None):
         frames.append((out, prev))
 
         if not (avg or args.difference):
-            print(prev)
+            print(phase)
             save_image(args.ppu, args.input, out, prev, args.full_resolution, args.debug)
 
     if avg or args.difference:

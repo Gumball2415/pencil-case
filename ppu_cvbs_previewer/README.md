@@ -87,23 +87,24 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.10.0
+version 0.11.0
 ```
 
 ## Requirements
 
 - See `requirements.txt` for details.
-- i'm a bit too lazy to search up the minimum version requirements so this is what i had
 
 ### Libraries
 
 For python:
 
+- this script requires `pipreqs` to maintain `requirements.txt`.
+
 ```python
-numpy==2.3.0
-pillow==11.2.1
-scipy==1.15.3
-matplotlib==3.10.3
+matplotlib==3.10.7
+numpy==2.3.5
+Pillow==12.0.0
+scipy==1.16.3
 ```
 
 additionally, FFmpeg is required for animated .mp4 previews
