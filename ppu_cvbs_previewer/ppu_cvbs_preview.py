@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.9.1"
+VERSION = "0.10.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -109,33 +109,32 @@ def parse_argv(argv):
         "-filt",
         "--decoding_filter",
         choices=[
-            "fir",
-            "notch",
+            "compl",
             "2-line",
             "3-line",
         ], 
-        default="notch",
-        help = "Method for complementary luma and chroma separation.\
-                Default = \"notch\".")
+        default="compl",
+        help = "Method for luma and chroma decoding.\
+                Default = \"compl\".")
     parser.add_argument(
         "-ftype",
-        "--fir_filter_type",
+        "--filter_type",
         choices=[
+            "iir",
             "lanczos",
             "lanczos_notch",
             "gauss",
             "box",
             "kaiser",
-            "firls",
-            "nofilt",
+            "leastsquares",
+            "none",
         ],
         nargs="+",
-        # default=["lanczos", "gauss"],
-        help = "FIR filter for complementary luma-chroma filtering and\
-            another FIR filter for lowpassing quadrature demodulated chroma.\
-            `decoding_filter` used will be deduced as FIR if this is\
-            specified. If one kernel is specified, it will be used for both\
-            filters.")
+        default=["iir"],
+        help = "One filter for complementary luma-chroma filtering and\
+            another filter for lowpassing quadrature demodulated chroma.\
+            If one option is specified, it will be used for both filters.\
+            Default =\"iir\".")
     parser.add_argument(
         "-full",
         "--full_resolution",
@@ -344,7 +343,7 @@ filter_config = []
 
 def configure_filters(
         ppu_type: str,
-        fir_filter_type,
+        filter_type,
         decoding_filter: str,
         backdrop: int,
         plot_filters: bool = False
@@ -395,6 +394,29 @@ def configure_filters(
 
     MAX_DB_LOSS = 2
     MIN_DB_GAIN = 20
+
+    # notch filter complementary decoding
+    bw = 1.3e6
+    b_luma, a_luma = signal.iirdesign(
+        [PPU_Cb-bw, PPU_Cb+bw],
+        [PPU_Cb, PPU_Cb],
+        gpass=MAX_DB_LOSS,
+        gstop=MIN_DB_GAIN,
+        analog=False,
+        ftype="butter",
+        fs=PPU_Fs
+    )
+    # chroma filters, used both in notch and comb filtering
+    # SMPTE 170M-2004, page 5, section 7.2
+    b_chroma, a_chroma = signal.iirdesign(
+        1.3e6,
+        3.6e6,
+        gpass=MAX_DB_LOSS,
+        gstop=MIN_DB_GAIN,
+        analog=False,
+        ftype="butter",
+        fs=PPU_Fs
+    )
 
     # kernels
 
@@ -457,20 +479,23 @@ def configure_filters(
     gauss_kernel *= signal.windows.lanczos(kernel_odd)
     gauss_kernel /= np.sum(gauss_kernel)
 
-    taps, beta = signal.kaiserord(MIN_DB_GAIN, 1.3e6/(PPU_Fs))
+    bw = 1e6
+    taps, beta = signal.kaiserord(MIN_DB_GAIN, bw/(PPU_Fs))
 
+    # Kaiser window method
     kaiser_kernel = signal.firwin(
         taps,
-        cutoff=PPU_Cb-(2/taps*PPU_Fs),
+        cutoff=PPU_Cb-bw/2,
         window=("kaiser", beta),
         pass_zero=True,
         fs=PPU_Fs
     )
 
-    firls_kernel = signal.firls(
+    # least squares error minimization
+    leastsquares_kernel = signal.firls(
         kernel_odd,
-        [0, band_lo_cutoff, PPU_Cb, PPU_Fs/2],
-        [1, 1, 0, 0],
+        [0, PPU_Cb-1.3e6, PPU_Cb, PPU_Fs/2],
+        [1, 1, 0, 1],
         fs=PPU_Fs
     )
 
@@ -482,67 +507,49 @@ def configure_filters(
         "gauss": gauss_kernel,
         "box": box_kernel,
         "kaiser": kaiser_kernel,
-        "firls": firls_kernel,
+        "leastsquares": leastsquares_kernel,
         "nofilt": nofilt,
+        "iir": None,
     }
 
-    match decoding_filter:
-        case "fir":
-            luma_kernel = kernel_dict[fir_filter_type[0]]
-            if len(fir_filter_type) == 1:
-                chroma_kernel = kernel_dict[fir_filter_type[0]]
-            else:
-                chroma_kernel = kernel_dict[fir_filter_type[1]]
-        case _:
-            # notch filter complementary decoding
-            bw = 1.3e6
-            b_luma, a_luma = signal.iirdesign(
-                [PPU_Cb-bw, PPU_Cb+bw],
-                [PPU_Cb, PPU_Cb],
-                gpass=MAX_DB_LOSS,
-                gstop=MIN_DB_GAIN,
-                analog=False,
-                ftype="butter",
-                fs=PPU_Fs
-            )
-            # chroma filters, used both in notch and comb filtering
-            # SMPTE 170M-2004, page 5, section 7.2
-            b_chroma, a_chroma = signal.iirdesign(
-                1.3e6,
-                3.6e6,
-                gpass=MAX_DB_LOSS,
-                gstop=MIN_DB_GAIN,
-                analog=False,
-                ftype="butter",
-                fs=PPU_Fs
-            )
+    luma_kernel = kernel_dict[filter_type[0]]
+    if len(filter_type) == 1:
+        chroma_kernel = luma_kernel
+    else:
+        chroma_kernel = kernel_dict[filter_type[1]]
 
     if plot_filters:
         import matplotlib.pyplot as plt
-        if decoding_filter == "fir":
-            plt.figure(figsize=(10,5))
-            plt.subplot(211)
-            plt.plot(luma_kernel, "o")
-            plt.subplot(212)
-            plt.plot(chroma_kernel, "o")
-            plt.show()
-            w, h = signal.freqz(luma_kernel)
-            x = w * PPU_Fs * 1.0 / (2 * np.pi)
-            y = 20 * np.log10(abs(h))
-            plt.figure(figsize=(10,5))
-            plt.semilogx(x, y)
-            w, h = signal.freqz(chroma_kernel)
-            x = w * PPU_Fs * 1.0 / (2 * np.pi)
-            y = 20 * np.log10(abs(h))
-            plt.semilogx(x, y)
-        else:
+        # luma
+        plt.figure(figsize=(10,5))
+        if luma_kernel is None:
             w, h = signal.freqz(b_luma, a_luma, fs=PPU_Fs)
             x = w
             y = 20 * np.log10(abs(h))
+            plt.subplot(2, 1, (1, 2))
             plt.semilogx(x, y)
+        else:
+            w, h = signal.freqz(luma_kernel)
+            x = w * PPU_Fs * 1.0 / (2 * np.pi)
+            y = 20 * np.log10(abs(h))
+            plt.subplot(2, 2, 3)
+            plt.plot(luma_kernel, "o")
+            plt.subplot(2, 2, (1, 2))
+            plt.semilogx(x, y)
+        # chroma
+        if chroma_kernel is None:
             w, h = signal.freqz(b_chroma, a_chroma, fs=PPU_Fs)
             x = w
             y = 20 * np.log10(abs(h))
+            plt.subplot(2, 2, (1, 2))
+            plt.semilogx(x, y)
+        else:
+            w, h = signal.freqz(chroma_kernel)
+            x = w * PPU_Fs * 1.0 / (2 * np.pi)
+            y = 20 * np.log10(abs(h))
+            plt.subplot(2, 2, 4)
+            plt.plot(chroma_kernel, "o")
+            plt.subplot(2, 2, (1, 2))
             plt.semilogx(x, y)
         plt.ylabel('Amplitude [dB]')
         plt.xlabel('Frequency [Hz]')
@@ -621,22 +628,30 @@ def encode_scanline(
 
     return cvbs_ppu, scanline_phase
 
-def yc_kernel(cvbs_ppu, kernel):
+def yc_fir(cvbs_ppu, kernel):
     y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
     c_line = cvbs_ppu - y_line
     return y_line, c_line
 
-def yc_notch(cvbs_ppu, b_notch, a_notch):
+def yc_iir(cvbs_ppu, b_luma, a_luma):
     # Figure 9.35a
     # Typical Simple Y/C Separator Complementary Filtering.
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
     # Demystified (5th ed., p. 448). Elsevier.
     # https://archive.org/details/video-demystified-5th-edition/
-    y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
+    y_line = signal.filtfilt(b_luma, a_luma, cvbs_ppu)
     c_line = cvbs_ppu - y_line
     return y_line, c_line
 
-def yc_pal_delayline(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, scanline_0: bool):
+def yc_pal_delayline(
+        cvbs_ppu,
+        prev_line,
+        r: RasterTimings,
+        b_luma,
+        a_luma,
+        luma_kernel,
+        scanline_0: bool
+    ):
     # bandpass and combine lines in specific way to retrieve U and V
     # based on Single Delay Line PAL Y/C Separator
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
@@ -653,24 +668,47 @@ def yc_pal_delayline(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, sc
     prev_line = np.append(cvbs_ppu[shift:],cvbs_ppu[:shift])
 
     # notch filter the luma
-    y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
+    if luma_kernel is None:
+        y_line, _ = yc_iir(cvbs_ppu, b_luma, a_luma)
+    else:
+        y_line, _ = yc_fir(cvbs_ppu, luma_kernel)
     return y_line, u_line, v_line, prev_line
 
-def yc_comb_2line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, scanline_0: bool):
+def yc_comb_2line(
+        cvbs_ppu,
+        prev_line,
+        r: RasterTimings,
+        b_luma,
+        a_luma,
+        luma_kernel,
+        scanline_0: bool
+    ):
     if scanline_0:
         prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
 
     u_line = v_line = np.array(cvbs_ppu - prev_line) / 2
 
     # rotate chroma line to account for next line's phase shift
-    shift = -2
-    prev_line = np.append(cvbs_ppu[shift:],cvbs_ppu[:shift])
+    shift = 2
+    prev_line = np.roll(cvbs_ppu, shift)
 
     # notch filter the luma
-    y_line = signal.filtfilt(b_notch, a_notch, cvbs_ppu)
+    if luma_kernel is None:
+        y_line, _ = yc_iir(cvbs_ppu, b_luma, a_luma)
+    else:
+        y_line, _ = yc_fir(cvbs_ppu, luma_kernel)
     return y_line, u_line, v_line, prev_line
 
-def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, pal_comb: bool, scanline_0: bool):
+def yc_comb_3line(
+        cvbs_ppu,
+        prev_line,
+        r: RasterTimings,
+        b_luma,
+        a_luma,
+        luma_kernel,
+        pal_comb: bool,
+        scanline_0: bool
+    ):
     # Figure 9.45, Figure 9.47
     # Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and Video Processing
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
@@ -684,7 +722,10 @@ def yc_comb_3line(cvbs_ppu, prev_line, r: RasterTimings, b_notch, a_notch, pal_c
     if not pal_comb: c_line /= 2
 
     # this is sharper than using an iirpeak
-    _, c_line = yc_notch(c_line, b_notch, a_notch)
+    if luma_kernel is None:
+        _, c_line = yc_iir(c_line, b_luma, a_luma)
+    else:
+        _, c_line = yc_fir(c_line, luma_kernel)
 
     y_line = prev_line[:, 0] - c_line
 
@@ -722,18 +763,18 @@ def decode_scanline(
 
     # separate luma and chroma
     match decoding_filter:
-        case "fir":
-            YUV_line[:, 0], u_line = yc_kernel(cvbs_ppu, luma_kernel)
-            v_line = u_line
         case "2-line":
             if ppu_type == "2C07":
-                YUV_line[:, 0], u_line, v_line, prev_line = yc_pal_delayline(cvbs_ppu, prev_line, r, b_luma, a_luma, scanline == 0)
+                YUV_line[:, 0], u_line, v_line, prev_line = yc_pal_delayline(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
             else:
-                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_luma, a_luma, scanline == 0)
+                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
         case "3-line":
-            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, ppu_type == "2C07", scanline == 0)
-        case "notch":
-            YUV_line[:, 0], u_line = yc_notch(cvbs_ppu, b_luma, a_luma)
+            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, ppu_type == "2C07", scanline == 0)
+        case "compl":
+            if luma_kernel is not None:
+                YUV_line[:, 0], u_line = yc_fir(cvbs_ppu, luma_kernel)
+            else:
+                YUV_line[:, 0], u_line = yc_iir(cvbs_ppu, b_luma, a_luma)
             v_line = u_line
         case _:
             print_err_quit(f"unknown decoding filter option: {decoding_filter}")
@@ -776,9 +817,9 @@ def decode_scanline(
     # filter chroma
     if debug:
         YUV_line = np.array([cvbs_ppu, YUV_line[:, 1], YUV_line[:, 2]]).T
-    elif decoding_filter == "fir":
-        YUV_line[:, 1], _ = yc_kernel(YUV_line[:, 1], chroma_kernel)
-        YUV_line[:, 2], _ = yc_kernel(YUV_line[:, 2], chroma_kernel)
+    elif chroma_kernel is not None:
+        YUV_line[:, 1], _ = yc_fir(YUV_line[:, 1], chroma_kernel)
+        YUV_line[:, 2], _ = yc_fir(YUV_line[:, 2], chroma_kernel)
     else:
         YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
         YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
@@ -904,17 +945,9 @@ def main(argv=None):
 
     frames = []
 
-    # if FIR filter type is mentioned, it implies FIR decoding filter
-    # only do so if we haven't mentioned any filters
-    if args.fir_filter_type is not None:
-        args.decoding_filter = "fir"
-    else:
-        if args.decoding_filter == "fir":
-            print_err_quit("no FIR filters specified.")
-
     filter_config = configure_filters(
         args.ppu,
-        args.fir_filter_type,
+        args.filter_type,
         args.decoding_filter,
         int(args.backdrop, 16),
         args.plot_filters

@@ -23,9 +23,8 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-b BACKDROP] [-pal PALETTE]
                            [-ppu {2C02,2C07}] [-phd PHASE_DISTORTION]
-                           [-x {chroma,luma}]
-                           [-filt {fir,notch,2-line,3-line}]
-                           [-ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]]
+                           [-x {chroma,luma}] [-filt {compl,2-line,3-line}]
+                           [-ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
                            input
@@ -65,15 +64,14 @@ options:
   -x {chroma,luma}, --disable {chroma,luma}
                         Disables chroma by setting UV to 0. Disables luma by
                         setting Y to 0.5.
-  -filt {fir,notch,2-line,3-line}, --decoding_filter {fir,notch,2-line,3-line}
-                        Method for complementary luma and chroma separation.
-                        Default = "notch".
-  -ftype {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...], --fir_filter_type {lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} [{lanczos,lanczos_notch,gauss,box,kaiser,firls,nofilt} ...]
-                        FIR filter for complementary luma-chroma filtering and
-                        another FIR filter for lowpassing quadrature
-                        demodulated chroma. `decoding_filter` used will be
-                        deduced as FIR if this is specified. If one kernel is
-                        specified, it will be used for both filters.
+  -filt {compl,2-line,3-line}, --decoding_filter {compl,2-line,3-line}
+                        Method for luma and chroma decoding. Default =
+                        "compl".
+  -ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...], --filter_type {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]
+                        One filter for complementary luma-chroma filtering and
+                        another filter for lowpassing quadrature demodulated
+                        chroma. If one option is specified, it will be used
+                        for both filters. Default ="iir".
   -full, --full_resolution
                         Saves full scanlines instead of a cropped output.
                         Scanlines are scaled to 8x to preserve 1:1 pixel
@@ -89,7 +87,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.9.1
+version 0.10.0
 ```
 
 ## Requirements
@@ -164,7 +162,7 @@ python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_3.png
 - [Sharpness test: Comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
 
 ```sh
-python3 ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 input/240pee_3.png
+python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 input/240pee_3.png
 ```
 
 ![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.png)
@@ -174,7 +172,7 @@ python3 ppu_cvbs_preview.py -filt fir -ftype box box -frames 2 input/240pee_3.pn
 ### Crosstalk tests
 
 ```sh
-python3 ppu_cvbs_preview.py -filt fir -ftype lanczos gauss -frames 2 input/dither.png
+python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 input/dither.png
 ```
 
 ![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_lanczos_gauss.png)
