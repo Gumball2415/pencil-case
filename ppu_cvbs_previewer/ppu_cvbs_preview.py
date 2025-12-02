@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.11.0"
+VERSION = "0.11.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -508,7 +508,7 @@ def configure_filters(
         "box": box_kernel,
         "kaiser": kaiser_kernel,
         "leastsquares": leastsquares_kernel,
-        "nofilt": nofilt,
+        "none": nofilt,
         "iir": None,
     }
 
@@ -664,8 +664,7 @@ def yc_pal_delayline(
     v_line = (cvbs_ppu - prev_line) / 2
 
     # rotate chroma line to account for next line's phase shift
-    shift = r.NEXT_SHIFT
-    prev_line = np.append(cvbs_ppu[shift:],cvbs_ppu[:shift])
+    prev_line = np.roll(cvbs_ppu, -4)
 
     # notch filter the luma
     if luma_kernel is None:
@@ -688,9 +687,9 @@ def yc_comb_2line(
 
     u_line = v_line = np.array(cvbs_ppu - prev_line) / 2
 
-    # rotate chroma line to account for next line's phase shift
-    shift = 2
-    prev_line = np.roll(cvbs_ppu, shift)
+    # align chroma phase of next line to be out-of-phase
+    # to avoid any funny business
+    prev_line = np.roll(cvbs_ppu, 2)
 
     # notch filter the luma
     if luma_kernel is None:
@@ -710,35 +709,43 @@ def yc_comb_3line(
         scanline_0: bool
     ):
     # Figure 9.45, Figure 9.47
-    # Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and Video Processing
+    # Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and
+    # Video Processing,
+    # Two-Line Delay NTSC Y/C Separator for Standards Conversion and Video
+    # Processing.
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
     # Demystified (5th ed., p. 456). Elsevier.
     # https://archive.org/details/video-demystified-5th-edition/
     if scanline_0:
         prev_line = np.zeros((r.SAMPLES_PER_SCANLINE, 2), dtype=np.float64)
 
-    c_line = (cvbs_ppu + prev_line[:, 1]) / 2
-    c_line = prev_line[:, 0] - c_line
-    if not pal_comb: c_line /= 2
+    # For standards conversion (Figure 9.45), the chrominance signal
+    # is just the full-bandwidth composite video signal.
+    # We use the delayed line to sync with luma
+    c_line = prev_line[:, 1]
+
+    y_line = (cvbs_ppu + prev_line[:, 1])/2
+    y_line = prev_line[:, 0] - y_line
+
+    if not pal_comb:
+        y_line /= 2
 
     # this is sharper than using an iirpeak
     if luma_kernel is None:
-        _, c_line = yc_iir(c_line, b_luma, a_luma)
+        _, y_line = yc_iir(y_line, b_luma, a_luma)
     else:
-        _, c_line = yc_fir(c_line, luma_kernel)
+        _, y_line = yc_fir(y_line, luma_kernel)
 
-    y_line = prev_line[:, 0] - c_line
-
-    c_line = prev_line[:, 0]
+    y_line = prev_line[:, 0] - y_line
 
     # rotate chroma line to account for next line's phase shift
     if pal_comb:
-        shift = 1
+        shift = -1
     else:
-        shift = -2
+        shift = 2
 
-    prev_line[:, 1] = np.append(prev_line[shift:, 0],prev_line[:shift, 0])
-    prev_line[:, 0] = np.append(cvbs_ppu[shift:],cvbs_ppu[:shift])
+    prev_line[:, 1] = np.roll(prev_line[:,0], shift)
+    prev_line[:, 0] = np.roll(cvbs_ppu, shift)
     
     return y_line, c_line, c_line, prev_line
 
@@ -793,10 +800,13 @@ def decode_scanline(
     # adjust with colorburst = 135 degrees
     # with this setting, hues match this image: https://forums.nesdev.org/viewtopic.php?p=133638#p133638
     if ppu_type == "2C07":
-        t -= 1
-        # 2-line comb filter adjusts the phase for us for some reason
+        # chroma is delayed by one line, flip parity
+        if decoding_filter == "3-line":
+            alternate_line = not alternate_line
+
+        # PAL delay line adjusts the subcarrier phase for us
+        # otherwise, nudge reference from 180 degrees to 135 degrees
         if decoding_filter != "2-line":
-            # if not comb filtering, U would align to 180 degrees instead of 135
             cburst_phase += np.pi/4 * (1 if alternate_line else -1)
 
     U_decode = np.sin((2 * np.pi / 12 * t) - cburst_phase) * 2
@@ -846,6 +856,15 @@ def encode_frame(raw_ppu,
 
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
 
+    # 3-line comb filtering needs an extra scanline
+    delay_lines = 1
+    if decoding_filter == "3-line":
+        raw_ppu = np.append(
+            raw_ppu,
+            np.full((delay_lines, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
+            axis=0
+        )
+
     # dummy; will be overwritten with an array
     prev_line = 0
 
@@ -860,7 +879,7 @@ def encode_frame(raw_ppu,
 
     for scanline in range(raw_ppu.shape[0]):
         # todo: concurrency for non-comb filter decoding
-        alternate_line = ppu_type == "2C07" and (scanline % 2 == 1)
+        alternate_line = ppu_type == "2C07" and (scanline % 2 == 0)
 
         # encode scanline
         skip &= (scanline==0)
@@ -876,8 +895,8 @@ def encode_frame(raw_ppu,
             skip
         )
 
-        # deccode scanline
-        out[scanline], prev_line = decode_scanline(
+        # decode scanline
+        decoded_scanline, prev_line = decode_scanline(
             cvbs_ppu,
             ppu_type,
             scanline,
@@ -891,6 +910,15 @@ def encode_frame(raw_ppu,
             alternate_line,
             debug
         )
+
+        line_index = scanline
+        # delay scanline in case of comb filtering
+        if decoding_filter == "3-line":
+            line_index -= delay_lines
+            # do not allow negative indexing
+            if line_index < 0: continue
+
+        out[line_index] = decoded_scanline
 
     # account for the rest of the scanlines
     next_phase = ((next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE) % 12

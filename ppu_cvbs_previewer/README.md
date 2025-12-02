@@ -87,7 +87,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.11.0
+version 0.11.1
 ```
 
 ## Requirements
