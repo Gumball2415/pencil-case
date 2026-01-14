@@ -1,50 +1,74 @@
 # composite filter
-# Copyright (C) 2023 Persune
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this
-# software and associated documentation files (the "Software"), to deal in the Software
-# without restriction, including without limitation the rights to use, copy, modify,
-# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-# permit persons to whom the Software is furnished to do so.
+# Copyright (C) 2023 Persune, MIT-0
 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
+import sys
 import argparse
-import os
+from pathlib import Path
 import numpy as np
-from scipy import signal
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from PIL import Image
 
-parser=argparse.ArgumentParser(
-    description="yet another composite filter",
-    epilog="version 0.1.0")
-parser.add_argument("input_image", type=str, help="input image")
-parser.add_argument("-dbg", "--debug", action="store_true", help="enable debug plot")
-parser.add_argument("-skp", "--skip-plot", action="store_true", help="skip plot")
-parser.add_argument("-nnv", "--neigbor-vertical", action="store_true", help="use nearest-neighbor scaling for vertical resolution")
-parser.add_argument("-pfd", "--prefilter-enable", action="store_true", help="enable luma lowpassing before encoding to composite")
-parser.add_argument("-prg", "--progressive", action="store_true", help="scale to 240 lines instead of 480")
-parser.add_argument("-isf", "--interlace-separate-frames", action="store_true", help="output one file per field")
-parser.add_argument("-irs", "--input-resolution-samplerate", action="store_true", help="use the image input's horizontal resolution as samplerate. minimum is 720 pixels")
-parser.add_argument("-war", "--wide-aspect-ratio", action="store_true", help="use wide aspect ratio for output")
-parser.add_argument("-pic", "--phase-invert-colorburst", action="store_true", help="invert phase of colorburst")
-parser.add_argument("-rsm", "--resolution-multiplier", type=int, help="multiply the samplerate by x. makes the image sharper at the cost of filtering time", default=2)
-parser.add_argument("-com", "--comb-filter", action="store_true", help="filter using 1d comb filter")
+def parse_argv(argv):
+    parser=argparse.ArgumentParser(
+        description="Composite encoder-decoder",
+        epilog="version 0.2.0")
+    parser.add_argument("input_image", type=Path, help="input image")
+    # output options
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="debug messages")
+    parser.add_argument(
+        "-x",
+        "--disable",
+        choices=[
+            "chroma",
+            "luma",
+        ], 
+        help = "Disables chroma by setting UV to 0. Disables luma by setting Y\
+            to 0.5.")
+    parser.add_argument(
+        "-filt",
+        "--decoding_filter",
+        choices=[
+            "compl",
+            "2-line",
+            "3-line",
+        ], 
+        default="compl",
+        help = "Method for luma and chroma decoding.\
+                Default = \"compl\".")
+    parser.add_argument(
+        "-ftype",
+        "--filter_type",
+        choices=[
+            "iir",
+            "lanczos",
+            "lanczos_notch",
+            "gauss",
+            "box",
+            "kaiser",
+            "leastsquares",
+            "none",
+        ],
+        nargs="+",
+        default=["iir"],
+        help = "One filter for complementary luma-chroma filtering and\
+            another filter for lowpassing quadrature demodulated chroma.\
+            If one option is specified, it will be used for both filters.\
+            Default =\"iir\".")
+    parser.add_argument(
+        "-full",
+        "--full_resolution",
+        action="store_true",
+        help="Saves full scanlines instead of a cropped output.\
+            Scanlines are scaled to 8x to preserve 1:1 pixel aspect ratio.")
+    return parser.parse_args(argv[1:])
 
-args = parser.parse_args()
-
-fig = plt.figure(tight_layout=True, figsize=(10,5.625))
-
-# load image
-image = Image.open(args.input_image)
-image_filename = os.path.splitext(image.filename)[0]
+def print_err_quit(message: str):
+    print("Error: "+message, file=sys.stderr)
+    sys.exit()
 
 # B-Y and R-Y reduction factors
 BY_rf = 0.492111
@@ -57,182 +81,301 @@ RGB_to_YUV = np.array([
     [ 0.701*RY_rf, -0.587*RY_rf, -0.114*RY_rf]
 ], np.float64)
 
-if args.wide_aspect_ratio:
-    raster_h_res = 960 * args.resolution_multiplier
-    raster_frontporch_length = 21.5 * args.resolution_multiplier
-elif args.input_resolution_samplerate and (image.size[0] > 720):
-    raster_h_res = image.size[0] * 2
-    raster_frontporch_length = np.around(raster_h_res / 44.6512 * 2) / 2 * args.resolution_multiplier
-else:
-    raster_h_res = 720 * args.resolution_multiplier
-    raster_frontporch_length = 16 * args.resolution_multiplier
+### filtering and raster config
 
-raster_v_res = 480
-raster_samplerate = raster_h_res/((53 + (1/3)) / 1000000)
-raster_subcarrier_freq = 315 / 88 * 1000000
-raster_total_scanline_length = (raster_samplerate * 227.5 / (315/88))
-raster_blanking_portion_length = raster_total_scanline_length - raster_h_res
-raster_href_start = raster_blanking_portion_length - raster_frontporch_length
+from dataclasses import dataclass, field
 
-# convert to numpy array
-# this switches the x and y axis, but that's ok
-# it'll switch back when we convert back to an image
-if args.progressive:
-    image = image.resize((image.size[0], int(raster_v_res/2)), resample=Image.Resampling.NEAREST if args.neigbor_vertical else Image.Resampling.LANCZOS)
-    image = image.resize((raster_h_res, int(raster_v_res/2)), resample=Image.Resampling.LANCZOS)
-    image = image.resize((raster_h_res, raster_v_res), resample=Image.Resampling.NEAREST)
-else:
-    image = image.resize((image.size[0], raster_v_res), resample=Image.Resampling.NEAREST if args.neigbor_vertical else Image.Resampling.LANCZOS)
-    image = image.resize((raster_h_res, raster_v_res), resample=Image.Resampling.LANCZOS)
+@dataclass
+class RasterTimings:
+    # definitions
+    F_H: float      # horizontal line frequency, in Hertz
+    F_V: float      # vertical line frequency, in Hertz
+    F_SC: float     # color subcarrier frequency, in Hertz
 
-print("buffer size: {0[0]} x {0[1]}".format(image.size))
+    CB_BURST_START: int # h.ref to burst start, in subcarrier cycles
+    CB_BURST_WIDTH: int # full amplitude colorburst width, in subcarrier cycles
+    CB_BURST_ENV: int   # colorburst transition time, in nanoseconds
 
-print("converting to floating point...")
-image_arr = np.array(image.convert("RGB"))
-image_arr = image_arr / np.float64(255)
-image_arr_copy = image_arr
+    # horizontal timings
+    H_SYNC_LENGTH: float    # Horizontal sync length, in microseconds
+    H_SYNC_ENV: float       # sync rise/fall time, in nanoseconds
+    H_BLANK_ENV: float      # blank rise/fall time, in nanoseconds
+    H_SYNC_TO_ACTIVE: float # h.ref to blanking end, in microseconds
+    H_ACTIVE_TO_SYNC: float # "back porch" to h.ref, in microseconds; maybe not?
+    H_ACTIVE: float = field(init=False)
 
-print("converting RGB to YUV...")
-image_arr = np.einsum('ij,klj->kli',RGB_to_YUV,image_arr, dtype=np.float64)
+    # vertical timings, see Figure 7 in SMPTE 170M-2004
+    # start of
+    V_BLANK_INT: int        # length of blanking interval, in lines
+    # starting line of vsync pre-equalizing pulse interval
+    V_PREQ: int
+    # starting line of vsync pulse interval
+    V_SERR: int
+    # starting line of vsync post-equalizing pulse interval
+    V_POEQ: int
 
-chroma_N, chroma_Wn = signal.buttord(1300000, 3600000, 2, 20, fs=raster_samplerate, analog=False)
-b_chroma, a_chroma = signal.butter(chroma_N, chroma_Wn, 'low', fs=raster_samplerate, analog=False)
+    INTERLACED: bool
 
-if args.prefilter_enable:
-    print("bandlimiting luma...")
-    image_arr[..., 0] = signal.filtfilt(b_chroma, a_chroma, image_arr[..., 0])
+    FS: int             # samplerate
+    ACTIVE_W_PX: int    # samples per active area width
+    ACTIVE_H_PX: int    # scanlines per active area height
+    # samplerate derived
+    FULL_W_PX: int = field(init=False)      # samples per scanline
+    FULL_H_PX: int = field(init=False)      # scanlines per frame
+    HALF_W_PX: int = field(init=False)      # samples per half scanline rounded up
+    HALF_H_PX: int = field(init=False)      # scanlines per field rounded up
 
-print("bandlimiting chroma according to SMPTE 170M-2004...")
-image_arr[..., 1] = signal.filtfilt(b_chroma, a_chroma, image_arr[..., 1])
-image_arr[..., 2] = signal.filtfilt(b_chroma, a_chroma, image_arr[..., 2])
+    # sample-based timings
+    H_SYNC_LENGTH_PX: int = field(init=False)
+    H_ACTIVE_PX: int = field(init=False)
+    # "center" h active video start offset
+    # depends on actual active area in samples, and given ACTIVE_W_PX
+    ACTIVE_W_PX_OFFS: int = field(init=False)
 
-luma_pedestal = 7.5
-active_scanline_buffer = np.empty([raster_v_res, raster_h_res], np.float64)
-# add padding for chroma
-sample_pad = int(np.round(raster_frontporch_length))
-active_scanline_buffer = np.pad(active_scanline_buffer, ((0, 0), (sample_pad, sample_pad)), mode='constant', constant_values=luma_pedestal)
+    # signal output
+    SIG_WHITE: float    # white level, in IRE
+    SIG_BLACK: float    # black (setup) level, in IRE
+    SIG_BLANK: float    # blanking level, in IRE
+    SIG_CBAMP: float    # colorburst pp amplitude, in IRE
+    SIG_SYNC: float     # sync level, in IRE
 
-print("encoding to composite signal...")
-timepoint = lambda s, o: o + (2*np.pi*raster_subcarrier_freq*(((s + raster_href_start + 0.5)/raster_samplerate))) + (np.pi * int(args.phase_invert_colorburst))
-for line in range(active_scanline_buffer.shape[0]):
-    for sample in range(raster_h_res):
-        offset = (np.pi * int(bool(line % 4 & 0b10)))
-        active_scanline_buffer[line, (sample + sample_pad)] = (0.925*image_arr[line, sample, 0] + luma_pedestal
-            + (0.925*image_arr[line, sample, 1] * np.sin(timepoint(sample, offset)))
-            + (0.925*image_arr[line, sample, 2] * np.cos(timepoint(sample, offset)))
-        )
+    def __post_init__(s):
+        s.FULL_W_PX = round(s.FS / s.F_H)
+        s.FULL_H_PX = round(s.F_H / s.F_V * 2)
+        s.HALF_W_PX = int(np.ceil(s.FULL_W_PX / 2))
+        s.HALF_H_PX = int(np.ceil(s.FULL_H_PX / 2))
+        s.H_SYNC_LENGTH_PX = round(s.FS * s.H_SYNC_LENGTH / 1e6)
+        s.H_ACTIVE = 1/s.F_H*1e6 - (s.H_ACTIVE_TO_SYNC + s.H_SYNC_TO_ACTIVE)
+        s.H_ACTIVE_PX = round(s.FS * s.H_ACTIVE / 1e6)
+        s.ACTIVE_W_PX_OFFS = round((s.H_ACTIVE_PX - s.ACTIVE_W_PX) / 2)
 
-YUV_buffer = np.empty((active_scanline_buffer.shape[0], active_scanline_buffer.shape[1], 3), np.float64)
+# global raster timing
+r = RasterTimings
 
-# set up filters
-q_factor = 0.5    # any lower than 1 and it'll become unstable
+def configure_filters():
+    global r
+    # NTSC definitions
+    # from SMPTE 170M-2004
+    # and Video Demystified, 4th ed.
+    r = RasterTimings(
+        F_SC = 5e6*63/88,
+        F_H = 2/455 * 5e6*63/88,
+        F_V = 2/525 * 2/455 * 5e6*63/88,
+        FS = 13.5e6,
 
-print("seperating chroma bandwidth...")
-if (args.comb_filter):
-    # the entire buffer has both fields in it, so skip every other line so we can comb filter the same field's previous line
-    chroma_buffer = np.empty((active_scanline_buffer.shape[0], active_scanline_buffer.shape[1]), np.float64)
-    for line in range(active_scanline_buffer.shape[-0]):
-        if (line < 2):
-            chroma_buffer[line, :] = (active_scanline_buffer[line, :] - luma_pedestal) / 2
+        H_SYNC_LENGTH = 4.7,
+        H_SYNC_ENV = 140*4,
+        H_BLANK_ENV = 140*4,
+        H_SYNC_TO_ACTIVE = 9.2,
+        H_ACTIVE_TO_SYNC = 1.5,
+
+        # off-by-one, we count starting with 0
+        # standards start with 1
+        V_PREQ = 3,
+        V_SERR = 6,
+        V_POEQ = 9,
+        V_BLANK_INT = 22,
+
+        INTERLACED = True,
+
+        CB_BURST_START = 19,
+        CB_BURST_WIDTH = 9,
+        CB_BURST_ENV = 300,
+
+        SIG_WHITE = 100,
+        SIG_BLACK = 7.5,
+        SIG_BLANK = 0,
+        SIG_CBAMP = 40,
+        SIG_SYNC = -40,
+
+        ACTIVE_W_PX = 720,
+        ACTIVE_H_PX = 480,
+    )
+    print(r)
+
+def encode_field(raster_buf, nd_img, field: int, phase_acc: int):
+    global r
+    v = 0 # v counter; field only
+    while v < r.HALF_H_PX:
+        # input index
+        y = (v - r.V_BLANK_INT) * 2 - (field & 1)
+        # buffer index
+        b = v + (field & 1) * (r.HALF_H_PX - 1)
+        # line buffer in IRE units
+        line_buf = np.full(r.FULL_W_PX, r.SIG_BLANK, dtype=float)
+
+        if v < r.V_PREQ:
+            raster_buf[b], phase_acc = encode_eq_pulse(line_buf, phase_acc)
+            raster_buf[b], phase_acc = encode_eq_pulse(line_buf, phase_acc)
+        elif v < r.V_SERR:
+            raster_buf[b], phase_acc = encode_vserr(line_buf, phase_acc)
+            raster_buf[b], phase_acc = encode_vserr(line_buf, phase_acc)
+        elif v < r.V_POEQ:
+            raster_buf[b], phase_acc = encode_eq_pulse(line_buf, phase_acc)
+            raster_buf[b], phase_acc = encode_eq_pulse(line_buf, phase_acc)
+        elif v < r.V_BLANK_INT:
+            raster_buf[b], phase_acc = encode_line(line_buf, phase_acc, None)
+        elif v < r.V_BLANK_INT + r.ACTIVE_H_PX/2:
+            # in interlaced, this first line is split on even fields
+            raster_buf[b], phase_acc = encode_line(line_buf, phase_acc, nd_img[y])
         else:
-            chroma_buffer[line, :] = (active_scanline_buffer[line, :] - active_scanline_buffer[line - 2, :]) / 2
-else:
-    b_peak, a_peak = signal.iirpeak(raster_subcarrier_freq, q_factor, raster_samplerate)
-    chroma_buffer = signal.filtfilt(b_peak, a_peak, active_scanline_buffer)
+            raster_buf[b], phase_acc = encode_line(line_buf, phase_acc, None)
+            if field % 2 == 0:
+                phase_acc -= r.HALF_W_PX
+        # print(v, b, y, phase_acc)
+        # plot_ndarray(raster_buf[b])
+        v += 1
+    field = (field+1)%4
+    return raster_buf, phase_acc, field
 
-print("seperating luma bandwidth...")
+def encode_eq_pulse(line_buf, phase_acc: int):
+    global r
+    # line buffer in IRE units
+    h = 0 # h counter
+    while h < r.HALF_W_PX:
+        if h < r.H_SYNC_LENGTH_PX/2:
+            line_buf[(h+phase_acc) % r.FULL_W_PX] = r.SIG_SYNC
+        h += 1
 
-YUV_buffer[:, :, 0] = active_scanline_buffer - chroma_buffer
-if (args.comb_filter):
-    b_notch, a_notch = signal.iirnotch(raster_subcarrier_freq, q_factor, raster_samplerate)
-    YUV_buffer[:, :, 0] = signal.filtfilt(b_notch, a_notch, YUV_buffer[:, :, 0])
+    phase_acc = (phase_acc + h) % (r.FULL_W_PX*2)
+    return line_buf, phase_acc
 
+def encode_vserr(line_buf, phase_acc: int):
+    global r
+    # line buffer in IRE units
+    h = 0 # h counter
+    while h < r.HALF_W_PX:
+        if h < r.HALF_W_PX - r.H_SYNC_LENGTH_PX:
+            line_buf[(h+phase_acc) % r.FULL_W_PX] = r.SIG_SYNC
+        h += 1
 
-print("normalizing luma and chroma...")
-YUV_buffer[:, :, :] -= luma_pedestal
-YUV_buffer /= 0.925
+    phase_acc = (phase_acc + h) % (r.FULL_W_PX*2)
+    return line_buf, phase_acc
 
-print("quadrature amplitude demodulation...")
-for line in range(active_scanline_buffer.shape[-0]):
-    for sample in range(active_scanline_buffer.shape[-1]):
-        offset = (np.pi * int(bool(line % 4 & 0b10)))
-        YUV_buffer[line, sample, 1] = (chroma_buffer[line, sample]) * np.sin(timepoint(sample - sample_pad, offset)) * 2
-        YUV_buffer[line, sample, 2] = (chroma_buffer[line, sample]) * np.cos(timepoint(sample - sample_pad, offset)) * 2
+def encode_line(line_buf, phase_acc: int, input_buf=None):
+    global r
+    h = 0 # h counter
 
-print("filtering chroma...")
-# chroma_N, chroma_Wn = signal.buttord(raster_subcarrier_freq-2000000, raster_subcarrier_freq, 3, 90, fs=raster_samplerate, analog=False)
-# b_chroma, a_chroma = signal.butter(chroma_N, chroma_Wn, 'low', fs=raster_samplerate, analog=False)
-# YUV_buffer[:, :, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_buffer[:, :, 1] * 2)
-# YUV_buffer[:, :, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_buffer[:, :, 2] * 2)
-YUV_buffer[..., 1] = signal.filtfilt(b_chroma, a_chroma, YUV_buffer[..., 1])
-YUV_buffer[..., 2] = signal.filtfilt(b_chroma, a_chroma, YUV_buffer[..., 2])
+    h_env_half = round(r.H_SYNC_ENV * 1e-9 * r.FS / 2)
+    h_env = h_env_half * 2
 
-print("converting YUV to RGB...")
-YUV_buffer = YUV_buffer[:, (sample_pad):(YUV_buffer.shape[1] - sample_pad), :]
-image_out = np.einsum('ij,klj->kli', np.linalg.inv(RGB_to_YUV), YUV_buffer, dtype=np.float64)
+    cv_env_half = round(r.CB_BURST_ENV * 1e-9 * r.FS / 2)
+    cv_env = cv_env_half * 2
+    cb_start = round(r.CB_BURST_START / r.F_SC * r.FS)
+    cb_width = round((r.CB_BURST_WIDTH / r.F_SC)* r.FS)
+    cb_end = cb_start + cb_width + (cv_env * 2)
 
-print("clipping values out of range...")
-np.clip(image_out, 0, 1, out=image_out)
-imageout = Image.fromarray(np.ubyte(np.around(image_out * 255)))
+    active_start = round(r.H_SYNC_TO_ACTIVE * 1e-6 * r.FS) + r.ACTIVE_W_PX_OFFS
+    active_end = active_start + r.ACTIVE_W_PX
 
-if args.wide_aspect_ratio:
-    print("set to 16:9 aspect ratio...")
-    imageout = imageout.resize((854, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-else:
-    print("set to 4:3 aspect ratio...")
-    imageout = imageout.resize((640, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-
-if args.debug:
-    gs = gridspec.GridSpec(2, 2)
-    ax = fig.add_subplot(gs[0, 0])
-    ax_composite = fig.add_subplot(gs[1, 0])
-    ax_luma = fig.add_subplot(gs[0, 1])
-    ax_chroma = fig.add_subplot(gs[1, 1])
-    
-    ax.set_title("Filtered image")
-    ax.imshow(imageout)
-    
-    active_scanline_buffer = active_scanline_buffer[:, (sample_pad):(active_scanline_buffer.shape[1] - sample_pad)]
-    active_scanline_buffer -= luma_pedestal
-    active_scanline_buffer /= 0.925
-    ax_composite.set_title("Encoded composite image")
-    ax_composite.imshow(active_scanline_buffer, cmap='gray')
-    
-    ax_luma.set_title("Decoded luma image")
-    ax_luma.imshow(YUV_buffer[:, :, 0], cmap='gray')
-    
-    chroma_plot_buffer = np.dstack((np.full((YUV_buffer.shape[0], YUV_buffer.shape[1]), 0.5), YUV_buffer[...,1], YUV_buffer[...,2]))
-    chroma_plot_buffer = np.einsum('ij,klj->kli', np.linalg.inv(RGB_to_YUV), chroma_plot_buffer, dtype=np.float64)
-    ax_chroma.set_title("Decoded chroma image")
-    ax_chroma.imshow(chroma_plot_buffer, cmap='gray')
-    plt.savefig("docs/example.png", dpi=96)
-else:
-    ax = fig.add_subplot()
-    ax.set_title("Filtered image")
-    ax.imshow(imageout)
+    while h < r.FULL_W_PX:
+        s, c = generate_carrier(phase_acc + h)
+        cb_sample = -s
+        # hsync
+        if h < r.H_SYNC_LENGTH_PX:
+            # starting second half
+            lvl = r.SIG_SYNC
+            line_buf[h] = lvl
+        # colorburst
+        elif h >= cb_start and h < cb_end:
+            # colorburst envelope
+            # raised cosine shaping
+            if (h < cb_start + cv_env):
+                t = (h - cb_start - cv_env)
+                cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
+            elif (h >= cb_end - cv_env):
+                t = (cb_end - cv_env) - h
+                cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
+            line_buf[h] += cb_sample * r.SIG_CBAMP / 2
+        # active
+        elif h >= active_start and h < active_end and input_buf is not None:
+            # grab line
+            t = h - active_start
+            line_buf[h] = encode_active(s, c, input_buf[t])
         
-if not args.skip_plot:
-    plt.show()
+        # line_buf[h] += s * -140
+        h += 1
+    phase_acc = (phase_acc + h) % (r.FULL_W_PX*2)
+    return line_buf, phase_acc
 
-print("png export format: {0}".format(imageout.mode))
-if args.interlace_separate_frames and not args.progressive:
-    # plot two fields via bob deinterlacing
-    print("saving fields...")
-    imageout_2 = imageout
+# during active video, convert YUV input to composite
+def encode_active(s: int, c: int, input):
+    global r
+    encoded = (
+        0.925 * input[0] +
+        r.SIG_BLACK +
+        0.925 * input[1] * s +
+        0.925 * input[2] * c)
+    return encoded
+
+def generate_carrier(sample: int):
+    global r
+    s = np.sin(2*np.pi*r.F_SC*(sample/r.FS))
+    c = np.cos(2*np.pi*r.F_SC*(sample/r.FS))
+    return s, c
+
+def main(argv=None):
+    args = parse_argv(argv or sys.argv)
+
+    # load image
+    image = Image.open(args.input_image)
+    image_filename = args.input_image.parent.joinpath(args.input_image.stem)
+    print(image_filename)
+    global r
+    configure_filters()
+    # squeeze image into target resolution
+    v_res = Image.Resampling.NEAREST
+    h_res = Image.Resampling.NEAREST
+    image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=v_res)
+    image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=h_res)
+
+    # convert to float
+    nd_img = np.array(image.convert("RGB"))
+    nd_img = nd_img / np.float64(255)
+    nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
+    # convert to IRE
+    nd_img *= 100
+    print(nd_img.shape)
+
+    raster_buf = np.zeros((2, r.FULL_H_PX, r.FULL_W_PX), dtype=float)
+    phase_acc = 0
+    field = 0
+    raster_buf[0], phase_acc, field = encode_field(raster_buf[0], nd_img, field, phase_acc)
+    raster_buf[0], phase_acc, field = encode_field(raster_buf[0], nd_img, field, phase_acc)
+    raster_buf[1], phase_acc, field = encode_field(raster_buf[1], nd_img, field, phase_acc)
+    raster_buf[1], phase_acc, field = encode_field(raster_buf[1], nd_img, field, phase_acc)
+
     
-    imageout = imageout.resize((imageout.size[0], int(imageout.size[1]/2)), resample=Image.Resampling.NEAREST)
-    imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*2)), resample=Image.Resampling.NEAREST)
-    imageout.save("{0}_filt_field_1.png".format(image_filename))
-    imageout.close()
+    plot_2darr(raster_buf[1])
+    raster_buf = raster_buf.flatten()
+    raster_buf = np.tile(raster_buf, 2)
+    raster_buf -= r.SIG_SYNC
+    raster_buf /= 180
+    raster_buf = (raster_buf * (2**16 - 1))
+    raster_buf -= 2**15
+    raster_buf = np.int16(raster_buf)
+    import soundfile as sf
+    
+    sf.write(
+        str(image_filename)+"_13-5msps_16_bit.flac", raster_buf, subtype="PCM_16", samplerate=96000)
 
-    imageout_2 = imageout_2.transform(imageout_2.size, Image.AFFINE, (1, 0, 0, 0, 1, -1))
-    imageout_2 = imageout_2.resize((imageout_2.size[0], int(imageout_2.size[1]/2)), Image.Resampling.NEAREST)
-    imageout_2 = imageout_2.resize((imageout_2.size[0], int(imageout_2.size[1]*2)), Image.Resampling.NEAREST)
-    imageout_2.save("{0}_filt_field_2.png".format(image_filename))
-    imageout_2.close()
-else:
-    print("saving frame...")
-    imageout.save("{0}_filt.png".format(image_filename))
-    imageout.close()
-image.close()
-plt.close()
+def plot_2darr(arr):
+    plt.figure(tight_layout=True, figsize=(10,5.625))
+    plt.imshow(arr)
+    plt.savefig("docs/example.png", dpi=300)
+    plt.show()
+    plt.close()
+
+def plot_signal(arr):
+    # upsample to 10x
+    from scipy.interpolate import make_interp_spline
+    x_size = arr.shape[0]
+    x = np.linspace(0, x_size, num=x_size)
+    x_new = np.linspace(0, x_size, num=round(x_size*2*r.FS/r.F_SC))
+    plt.plot(x, arr, ".", color="gray")
+    plt.plot(x_new, make_interp_spline(x, arr, bc_type="clamped")(x_new))
+    plt.show()
+    plt.close()
+
+if __name__=='__main__':
+    main(sys.argv)
