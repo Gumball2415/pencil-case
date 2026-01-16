@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+from scipy.signal import resample_poly, resample
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -25,6 +26,22 @@ def parse_argv(argv):
         action="store_true",
         help="Switch interlaced fields")
     parser.add_argument(
+        "-p",
+        "--prefilter",
+        action="store_true",
+        help="Prefilter input luma and chroma before encoding.")
+    parser.add_argument(
+        "-n",
+        "--noise",
+        type=float,
+        default=0.0,
+        help="Sigma of gaussian noise to add to the signal, in units of IRE. Default == 0.0")
+    parser.add_argument(
+        "--frames",
+        type=int,
+        default=2,
+        help="Number of whole frames to render (or, x2 fields). Default == 2")
+    parser.add_argument(
         "-x",
         "--disable",
         choices=[
@@ -33,42 +50,42 @@ def parse_argv(argv):
         ], 
         help = "Disables chroma by setting UV to 0. Disables luma by setting Y\
             to 0.5.")
-    parser.add_argument(
-        "-filt",
-        "--decoding_filter",
-        choices=[
-            "compl",
-            "2-line",
-            "3-line",
-        ], 
-        default="compl",
-        help = "Method for luma and chroma decoding.\
-                Default = \"compl\".")
-    parser.add_argument(
-        "-ftype",
-        "--filter_type",
-        choices=[
-            "iir",
-            "lanczos",
-            "lanczos_notch",
-            "gauss",
-            "box",
-            "kaiser",
-            "leastsquares",
-            "none",
-        ],
-        nargs="+",
-        default=["iir"],
-        help = "One filter for complementary luma-chroma filtering and\
-            another filter for lowpassing quadrature demodulated chroma.\
-            If one option is specified, it will be used for both filters.\
-            Default =\"iir\".")
-    parser.add_argument(
-        "-full",
-        "--full_resolution",
-        action="store_true",
-        help="Saves full scanlines instead of a cropped output.\
-            Scanlines are scaled to 8x to preserve 1:1 pixel aspect ratio.")
+    # parser.add_argument(
+    #     "-filt",
+    #     "--decoding_filter",
+    #     choices=[
+    #         "compl",
+    #         "2-line",
+    #         "3-line",
+    #     ], 
+    #     default="compl",
+    #     help = "Method for luma and chroma decoding.\
+    #             Default = \"compl\".")
+    # parser.add_argument(
+    #     "-ftype",
+    #     "--filter_type",
+    #     choices=[
+    #         "iir",
+    #         "lanczos",
+    #         "lanczos_notch",
+    #         "gauss",
+    #         "box",
+    #         "kaiser",
+    #         "leastsquares",
+    #         "none",
+    #     ],
+    #     nargs="+",
+    #     default=["iir"],
+    #     help = "One filter for complementary luma-chroma filtering and\
+    #         another filter for lowpassing quadrature demodulated chroma.\
+    #         If one option is specified, it will be used for both filters.\
+    #         Default =\"iir\".")
+    # parser.add_argument(
+    #     "-full",
+    #     "--full_resolution",
+    #     action="store_true",
+    #     help="Saves full scanlines instead of a cropped output.\
+    #         Scanlines are scaled to 8x to preserve 1:1 pixel aspect ratio.")
     return parser.parse_args(argv[1:])
 
 def print_err_quit(message: str):
@@ -192,7 +209,7 @@ def configure_filters():
         V_PREQ = 3,
         V_SERR = 6,
         V_POEQ = 9,
-        V_BLANK_INT = 20,
+        V_BLANK_INT = 22,
 
         INTERLACED = True,
 
@@ -222,7 +239,15 @@ def inc_line(b: int):
     return b
 
 
-def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_field: bool, debug: bool = False):
+def encode_field(
+        raster_buf,
+        nd_img,
+        field: int,
+        phase_acc: int,
+        b: int,
+        flip_field: bool = False,
+        debug: bool = False,
+        disable: str = None):
     """
     Encodes a field from a given YUV-encoded buffer. Returns an encoded raster buffer, and the phase state of the accumulator and the raster index.
 
@@ -243,8 +268,15 @@ def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_fi
         Raster buffer line index. Used for interlaced indexing..
     :type b: int
     :param flip_field:
-        Switches odd/even field to be encoded.
+        Switches odd/even field to be encoded. default: bottom field first
     :type flip_field: bool
+    :param debug:
+        Print debug information.
+    :type debug: bool
+    :param disable:
+        Disable "chroma" by setting saturation to 0, or "luma" by setting luma 
+        to 50 IRE.
+    :type debug: str
     """
     global r
     v = 0 # v counter; field only
@@ -256,7 +288,7 @@ def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_fi
         # line buffer in IRE units
         if debug:
             print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
-        mod_phase_acc(phase_acc)
+        phase_acc = mod_phase_acc(phase_acc)
 
         # vsync, field 1/3
         if field & 1 == 0:
@@ -309,11 +341,11 @@ def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_fi
                 v += 1
                 continue
             elif v < r.V_BLANK_INT:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
+                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
             elif v < r.V_BLANK_INT + r.ACTIVE_H_PX/2:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y])
             else:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
+                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
 
         # if debug:
         #     plot_signal(raster_buf[b])
@@ -348,7 +380,7 @@ def encode_vserr(line_buf, phase_acc: int):
     phase_acc = mod_phase_acc(phase_acc)
     return line_buf, phase_acc
 
-def encode_line(line_buf, phase_acc: int, input_buf=None):
+def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
     global r
     h = 0 # h counter
 
@@ -382,23 +414,39 @@ def encode_line(line_buf, phase_acc: int, input_buf=None):
         elif h >= r.ACTIVE_W_START and h < r.ACTIVE_W_END and input_buf is not None:
             # grab line
             t = h - r.ACTIVE_W_START - r.ACTIVE_W_OFFS
-            line_buf[h] = encode_active(s, c, input_buf[t])
+            if t >= 0 and t < r.ACTIVE_W_PX:
+                line_buf[h] = encode_active(s, c, input_buf[t], disable)
+            else:
+                line_buf[h] = encode_active(
+                    s, c, np.array([0, 0, 0], dtype=np.float64), disable)
         h += 1
     phase_acc += h
     phase_acc = mod_phase_acc(phase_acc)
     return line_buf, phase_acc
 
 # 
-def encode_active(s: int, c: int, input):
+def encode_active(s: int, c: int, input, disable: str = None):
     """
     during active video, convert YUV input to composite
     """
     global r
-    encoded = (
-        0.925 * input[0] +
-        r.SIG_BLACK +
-        0.925 * input[1] * s +
-        0.925 * input[2] * c)
+    scale_factor = (r.SIG_WHITE - r.SIG_BLACK)/r.SIG_WHITE
+    if disable == "luma":
+        encoded = (
+            scale_factor * 50 +
+            r.SIG_BLACK +
+            scale_factor * input[1] * s +
+            scale_factor * input[2] * c)
+    elif disable == "chroma":
+        encoded = (
+            scale_factor * input[0] +
+            r.SIG_BLACK)
+    else:
+        encoded = (
+            scale_factor * input[0] +
+            r.SIG_BLACK +
+            scale_factor * input[1] * s +
+            scale_factor * input[2] * c)
     return encoded
 
 def generate_carrier(sample: int):
@@ -420,52 +468,82 @@ def main(argv=None):
     image_filename = args.input_image.parent.joinpath(args.input_image.stem)
     global r
     configure_filters()
-    # squeeze image into target resolution
-    v_res = Image.Resampling.LANCZOS
-    h_res = Image.Resampling.LANCZOS
-    image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=v_res)
-    image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=h_res)
 
     # convert to float
     nd_img = np.array(image.convert("RGB"))
     nd_img = nd_img / np.float64(255)
     nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
+    print(nd_img.shape)
+    # squeeze image into target resolution
+    nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
+    nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
+    print(nd_img.shape)
+
+    # prefilter, if permitted
+    if args.prefilter:
+        from scipy import signal
+        # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
+        b_chroma, a_chroma = signal.iirdesign(
+            1.3e6  ,
+            3.6e6,
+            gpass=0.1,
+            gstop=20,
+            analog=False,
+            ftype="butter",
+            fs=r.FS
+        )
+        nd_img[..., 1] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 1])
+        nd_img[..., 2] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 2])
+        # simple notch
+        b_luma, a_luma = signal.iirnotch(r.F_SC, 1.5, fs=r.FS)
+        nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
+
     # convert to IRE
     nd_img *= 100
 
-    raster_buf = np.zeros((2, r.FULL_H_PX, r.FULL_W_PX), dtype=float)
-    
+    raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+
     # phase_acc is used for colorburst phase, and also vsync serration phase
     phase_acc = 0
     b = 0
     field = 0
 
+    # encode first frame
     raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field, args.debug)
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
+        args.debug, args.disable)
     raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field, args.debug)
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
+        args.debug, args.disable)
 
-    raster_buf[1], phase_acc, field, b = encode_field(
-        raster_buf[1], nd_img, field, phase_acc, b, args.flip_field, args.debug)
-    raster_buf[1], phase_acc, field, b = encode_field(
-        raster_buf[1], nd_img, field, phase_acc, b, args.flip_field, args.debug)
+    for _ in range(args.frames-1):
+        buffer = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+        buffer[0], phase_acc, field, b = encode_field(
+            buffer[0], nd_img, field, phase_acc, b, args.flip_field,
+            args.debug, args.disable)
+        buffer[0], phase_acc, field, b = encode_field(
+            buffer[0], nd_img, field, phase_acc, b, args.flip_field,
+            args.debug, args.disable)
+        raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
 
+    rng = np.random.default_rng()
+    raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
     if args.debug:
-        plot_2darr(raster_buf[1])
+        plot_2darr(raster_buf[0])
+    raster_buf -= r.SIG_SYNC
+    raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
+    raster_buf -= 0.5
+    raster_buf = np.clip(raster_buf, -1, 1)
+    raster_buf *= (2**31)
+    raster_buf = np.int32(raster_buf)
     raster_buf = raster_buf.flatten()
     # repeat signal in case of field dropping
     raster_buf = np.tile(raster_buf, 2)
-    raster_buf -= r.SIG_SYNC
-    raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
-    raster_buf = np.clip(raster_buf, 0, 1)
-    raster_buf *= (2**32)
-    raster_buf -= 2**31
-    raster_buf = np.int32(raster_buf)
 
     import soundfile as sf
     srate_name = str(round(r.FS/1e6, 4))
     
-    sf.write(f"{image_filename}_{srate_name}MHz_24_bit.flac", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
+    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.flac", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
 
 def plot_2darr(arr):
     plt.figure(tight_layout=True, figsize=(10,5.625))
@@ -475,7 +553,6 @@ def plot_2darr(arr):
     plt.close()
 
 def plot_signal(arr):
-    from scipy.signal import resample_poly
     # upsample to 10x
     x_s = arr.shape[0]
     dws = 1
