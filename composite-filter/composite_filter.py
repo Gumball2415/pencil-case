@@ -100,6 +100,9 @@ class RasterTimings:
     CB_BURST_START: int # h.ref to burst start, in subcarrier cycles
     CB_BURST_WIDTH: int # full amplitude colorburst width, in subcarrier cycles
     CB_BURST_ENV: int   # colorburst transition time, in nanoseconds
+    CB_ANGLE: float     # subcarrier color angle, in degrees
+    CB_U: float = field(init=False) # subcarrier color angle, in UV
+    CB_V: float = field(init=False)
 
     # horizontal timings
     H_SYNC_LENGTH: float    # Horizontal sync length, in microseconds
@@ -107,7 +110,6 @@ class RasterTimings:
     H_BLANK_ENV: float      # blank rise/fall time, in nanoseconds
     H_SYNC_TO_ACTIVE: float # h.ref to blanking end, in microseconds
     H_ACTIVE_TO_SYNC: float # "back porch" to h.ref, in microseconds; maybe not?
-    H_ACTIVE: float = field(init=False)
 
     # vertical timings, see Figure 7 in SMPTE 170M-2004
     # start of
@@ -131,13 +133,18 @@ class RasterTimings:
     HALF_H_PX: int = field(init=False)      # scanlines per field rounded up
 
     # sample-based timings
+    H_ACTIVE_TO_SYNC_PX: int = field(init=False)
+    H_SYNC_TO_ACTIVE_PX: int = field(init=False)
     H_SYNC_LENGTH_PX: int = field(init=False)
-    H_ACTIVE_PX: int = field(init=False)
     # "center" h active video start offset
     # depends on actual active area in samples, and given ACTIVE_W_PX
-    ACTIVE_W_PX_OFFS: int = field(init=False)
+    ACTIVE_W_START: int = field(init=False)
+    ACTIVE_W_END: int = field(init=False)
+    # the video may not necessarily fit active width, so calculate an offset
+    ACTIVE_W_OFFS: int = field(init=False)
 
     # signal output
+    SIG_EXCUR: float    # max excursion, in IRE
     SIG_WHITE: float    # white level, in IRE
     SIG_BLACK: float    # black (setup) level, in IRE
     SIG_BLANK: float    # blanking level, in IRE
@@ -149,10 +156,16 @@ class RasterTimings:
         s.FULL_H_PX = round(s.F_H / s.F_V * 2)
         s.HALF_W_PX = round(s.FULL_W_PX / 2)
         s.HALF_H_PX = round(s.FULL_H_PX / 2)
-        s.H_SYNC_LENGTH_PX = round(s.FS * s.H_SYNC_LENGTH / 1e6)
-        s.H_ACTIVE = 1/s.F_H*1e6 - (s.H_ACTIVE_TO_SYNC + s.H_SYNC_TO_ACTIVE)
-        s.H_ACTIVE_PX = round(s.FS * s.H_ACTIVE / 1e6)
-        s.ACTIVE_W_PX_OFFS = round((s.H_ACTIVE_PX - s.ACTIVE_W_PX) / 2)
+        s.H_ACTIVE_TO_SYNC_PX = round(s.FS * s.H_ACTIVE_TO_SYNC*1e-6)
+        s.H_SYNC_TO_ACTIVE_PX = round(s.FS * s.H_SYNC_TO_ACTIVE*1e-6)
+        s.H_SYNC_LENGTH_PX = round(s.FS * s.H_SYNC_LENGTH * 1e-6)
+        s.ACTIVE_W_START = s.H_SYNC_TO_ACTIVE_PX
+        s.ACTIVE_W_END = s.FULL_W_PX - s.H_ACTIVE_TO_SYNC_PX
+        s.ACTIVE_W_OFFS = round(((s.ACTIVE_W_END - s.ACTIVE_W_START) - s.ACTIVE_W_PX) / 2)
+
+        s.CB_U = np.cos(s.CB_ANGLE*np.pi/180)
+        s.CB_V = np.sin(s.CB_ANGLE*np.pi/180)
+
 
 # global raster timing
 r = RasterTimings
@@ -169,8 +182,8 @@ def configure_filters():
         FS = 13.5e6,
 
         H_SYNC_LENGTH = 4.7,
-        H_SYNC_ENV = 140*4,
-        H_BLANK_ENV = 140*4,
+        H_SYNC_ENV = 140,
+        H_BLANK_ENV = 140,
         H_SYNC_TO_ACTIVE = 9.2,
         H_ACTIVE_TO_SYNC = 1.5,
 
@@ -183,10 +196,12 @@ def configure_filters():
 
         INTERLACED = True,
 
+        CB_ANGLE = -180,
         CB_BURST_START = 19,
         CB_BURST_WIDTH = 9,
         CB_BURST_ENV = 300,
 
+        SIG_EXCUR = 140,
         SIG_WHITE = 100,
         SIG_BLACK = 7.5,
         SIG_BLANK = 0,
@@ -206,7 +221,31 @@ def inc_line(b: int):
     b = (b + 1) % r.FULL_H_PX
     return b
 
-def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_field: bool):
+
+def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_field: bool, debug: bool = False):
+    """
+    Encodes a field from a given YUV-encoded buffer. Returns an encoded raster buffer, and the phase state of the accumulator and the raster index.
+
+    :param raster_buf:
+        nd-array raster buffer to encode images in. Must be able to overwrite 
+        lines for vsync generation.
+    :param nd_img:
+        input image buffer of active width and height. Must be YUV formatted 
+        with range -1.0 to 1.0.
+    :param field:
+        Field type. range is 0-7.
+    :type field: int
+    :param phase_acc:
+        Phase accumulator. Used for colorburst phase tracking, and vsync 
+        alignment tracking.
+    :type phase_acc: int
+    :param b:
+        Raster buffer line index. Used for interlaced indexing..
+    :type b: int
+    :param flip_field:
+        Switches odd/even field to be encoded.
+    :type flip_field: bool
+    """
     global r
     v = 0 # v counter; field only
     # buffer index
@@ -215,7 +254,8 @@ def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_fi
         # input index
         y = (v - r.V_BLANK_INT) * 2 + int(not (field & 1) ^ flip_field)
         # line buffer in IRE units
-        # print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
+        if debug:
+            print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
         mod_phase_acc(phase_acc)
 
         # vsync, field 1/3
@@ -275,7 +315,7 @@ def encode_field(raster_buf, nd_img, field: int, phase_acc: int, b: int, flip_fi
             else:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
 
-        # if v >= (r.HALF_H_PX - 5) or v < r.V_POEQ:
+        # if debug:
         #     plot_signal(raster_buf[b])
         b = inc_line(b)
         v += 1
@@ -312,48 +352,47 @@ def encode_line(line_buf, phase_acc: int, input_buf=None):
     global r
     h = 0 # h counter
 
-    cv_env_half = round(r.CB_BURST_ENV * 1e-9 * r.FS / 2)
-    cv_env = cv_env_half * 2
+    cv_env = round(r.CB_BURST_ENV * 1e-9 * r.FS)
     cb_start = round(r.CB_BURST_START / r.F_SC * r.FS)
-    cb_width = round((r.CB_BURST_WIDTH / r.F_SC)* r.FS)
-    cb_end = cb_start + cb_width + (cv_env * 2)
-
-    active_start = round(r.H_SYNC_TO_ACTIVE * 1e-6 * r.FS) + r.ACTIVE_W_PX_OFFS
-    active_end = active_start + r.ACTIVE_W_PX
+    cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS)
+    cb_end = cb_start + cb_width
 
     while h < r.FULL_W_PX:
         s, c = generate_carrier(phase_acc + h)
-        cb_sample = -s
+        # hack: vhs-decode cvbs decodes color 180 offset!
+        # so, encode colorburst offset by 180
+        cb_sample = s*r.CB_U + c*r.CB_V
         # hsync
         if h < r.H_SYNC_LENGTH_PX:
             # starting second half
-            lvl = r.SIG_SYNC
-            line_buf[h] = lvl
+            line_buf[h] = r.SIG_SYNC
         # colorburst
-        elif h >= cb_start and h < cb_end:
+        elif h >= cb_start - cv_env and h < cb_end:
+        # elif h >= r.H_SYNC_LENGTH_PX and h < r.ACTIVE_W_START:
             # colorburst envelope
             # raised cosine shaping
-            if (h < cb_start + cv_env):
-                t = (h - cb_start - cv_env)
-                cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
-            elif (h >= cb_end - cv_env):
-                t = (cb_end - cv_env) - h
-                cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
+            # if (h < cb_start):
+            #     t = h - cb_start
+            #     cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
+            # elif (h >= cb_end - cv_env):
+            #     t = cb_end - cv_env - h
+            #     cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
             line_buf[h] += cb_sample * r.SIG_CBAMP / 2
         # active
-        elif h >= active_start and h < active_end and input_buf is not None:
+        elif h >= r.ACTIVE_W_START and h < r.ACTIVE_W_END and input_buf is not None:
             # grab line
-            t = h - active_start
+            t = h - r.ACTIVE_W_START - r.ACTIVE_W_OFFS
             line_buf[h] = encode_active(s, c, input_buf[t])
-        
-        # line_buf[h] += s * -140
         h += 1
     phase_acc += h
     phase_acc = mod_phase_acc(phase_acc)
     return line_buf, phase_acc
 
-# during active video, convert YUV input to composite
+# 
 def encode_active(s: int, c: int, input):
+    """
+    during active video, convert YUV input to composite
+    """
     global r
     encoded = (
         0.925 * input[0] +
@@ -363,10 +402,15 @@ def encode_active(s: int, c: int, input):
     return encoded
 
 def generate_carrier(sample: int):
+    """
+    generates a color subcarrier reference signal
+    
+    :param sample: time point, in samples
+    :type sample: int
+    """
     global r
-    s = np.sin(2*np.pi*r.F_SC*(sample/r.FS))
-    c = np.cos(2*np.pi*r.F_SC*(sample/r.FS))
-    return s, c
+    time_const = 2*np.pi*r.F_SC*(sample/r.FS)
+    return -np.sin(time_const), -np.cos(time_const)
 
 def main(argv=None):
     args = parse_argv(argv or sys.argv)
@@ -378,7 +422,7 @@ def main(argv=None):
     configure_filters()
     # squeeze image into target resolution
     v_res = Image.Resampling.LANCZOS
-    h_res = Image.Resampling.NEAREST
+    h_res = Image.Resampling.LANCZOS
     image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=v_res)
     image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=h_res)
 
@@ -396,25 +440,32 @@ def main(argv=None):
     b = 0
     field = 0
 
-    raster_buf[0], phase_acc, field, b = encode_field(raster_buf[0], nd_img, field, phase_acc, b, args.flip_field)
-    raster_buf[0], phase_acc, field, b = encode_field(raster_buf[0], nd_img, field, phase_acc, b, args.flip_field)
+    raster_buf[0], phase_acc, field, b = encode_field(
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field, args.debug)
+    raster_buf[0], phase_acc, field, b = encode_field(
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field, args.debug)
 
-    raster_buf[1], phase_acc, field, b = encode_field(raster_buf[1], nd_img, field, phase_acc, b, args.flip_field)
-    raster_buf[1], phase_acc, field, b = encode_field(raster_buf[1], nd_img, field, phase_acc, b, args.flip_field)
+    raster_buf[1], phase_acc, field, b = encode_field(
+        raster_buf[1], nd_img, field, phase_acc, b, args.flip_field, args.debug)
+    raster_buf[1], phase_acc, field, b = encode_field(
+        raster_buf[1], nd_img, field, phase_acc, b, args.flip_field, args.debug)
 
-    plot_2darr(raster_buf[1])
+    if args.debug:
+        plot_2darr(raster_buf[1])
     raster_buf = raster_buf.flatten()
     # repeat signal in case of field dropping
     raster_buf = np.tile(raster_buf, 2)
     raster_buf -= r.SIG_SYNC
-    raster_buf /= 180
-    raster_buf = (raster_buf * (2**16 - 1))
-    raster_buf -= 2**15
-    raster_buf = np.int16(raster_buf)
+    raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
+    raster_buf = np.clip(raster_buf, 0, 1)
+    raster_buf *= (2**32)
+    raster_buf -= 2**31
+    raster_buf = np.int32(raster_buf)
+
     import soundfile as sf
+    srate_name = str(round(r.FS/1e6, 4))
     
-    sf.write(
-        str(image_filename)+"_13-5msps_16_bit.flac", raster_buf, subtype="PCM_16", samplerate=96000)
+    sf.write(f"{image_filename}_{srate_name}MHz_24_bit.flac", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
 
 def plot_2darr(arr):
     plt.figure(tight_layout=True, figsize=(10,5.625))
@@ -424,13 +475,16 @@ def plot_2darr(arr):
     plt.close()
 
 def plot_signal(arr):
+    from scipy.signal import resample_poly
     # upsample to 10x
-    from scipy.interpolate import make_interp_spline
-    x_size = arr.shape[0]
-    x = np.linspace(0, x_size, num=x_size)
-    x_new = np.linspace(0, x_size, num=round(x_size*2*r.FS/r.F_SC))
+    x_s = arr.shape[0]
+    dws = 1
+    ups = dws*8
+    x_s2 = x_s * int(ups/dws)
+    x = np.linspace(0, x_s, num=x_s)
+    x_new = np.linspace(0, x_s, num=x_s2, endpoint=True)
     plt.plot(x, arr, ".", color="gray")
-    plt.plot(x_new, make_interp_spline(x, arr, bc_type="clamped")(x_new))
+    plt.plot(x_new, resample_poly(arr, ups, dws))
     plt.show()
     plt.close()
 
