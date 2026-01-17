@@ -490,19 +490,17 @@ def encode_image(image, args, field, phase_acc, b):
     nd_img = np.array(image.convert("RGB"))
     nd_img = nd_img / np.float64(255)
     nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
-    print(nd_img.shape)
     # squeeze image into target resolution
     # nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
     # nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
     # TODO: make this optional
     # downsample chroma channels by half, according to 4:2:2 subsampling
-    nd_img[..., 1] = resample(
-        resample(nd_img[..., 1], r.ACTIVE_W_PX//2, axis=1),
-        r.ACTIVE_W_PX, axis=1)
-    nd_img[..., 2] = resample(resample(
-        nd_img[..., 2], r.ACTIVE_W_PX//2, axis=1),
-        r.ACTIVE_W_PX, axis=1)
-    print(nd_img.shape)
+    # nd_img[..., 1] = resample(
+    #     resample(nd_img[..., 1], r.ACTIVE_W_PX//2, axis=1),
+    #     r.ACTIVE_W_PX, axis=1)
+    # nd_img[..., 2] = resample(resample(
+    #     nd_img[..., 2], r.ACTIVE_W_PX//2, axis=1),
+    #     r.ACTIVE_W_PX, axis=1)
 
     # prefilter, if permitted
     if not args.prefilter_disable:
