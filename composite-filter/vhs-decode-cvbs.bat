@@ -8,6 +8,6 @@ set decode_path=C:\Github\oyvindln\vhs-decode\decode
 %decode_path%\ld-chroma-decoder.exe --ntsc-phase-comp -f ntsc3d --pad 32 -t 10 -p y4m "%~dp1%~n1_decode.tbc" "%~dp1%~n1_decode.bin"
 pause
 ffmpeg -y -i "%~dp1%~n1_decode.bin" -c:v ffv1 -level 3 -coder 1 -context 1 -g 1 -slicecrc 1 -vf setfield=tff -flags +ilme+ildct -color_primaries smpte170m -color_trc bt709 -colorspace smpte170m -color_range tv -pix_fmt yuv422p10le -vf setdar=4/3,setfield=tff "%~dp1%~n1_decode.mkv"
-@REM ffmpeg -y -i "%~dp1%~n1_decode.bin" "%~dp1%~n1_decode_%%07d.png"
+ffmpeg -y -i "%~dp1%~n1_decode.bin" "%~dp1%~n1_decode_%%07d.png"
 del "%~dp1%~n1_decode.bin"
 pause

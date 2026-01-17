@@ -26,10 +26,16 @@ def parse_argv(argv):
         action="store_true",
         help="Switch interlaced fields")
     parser.add_argument(
-        "-p",
-        "--prefilter",
+        "-pd",
+        "--prefilter_disable",
         action="store_true",
-        help="Prefilter input luma and chroma before encoding.")
+        help="Disables filtering of chroma before encoding.")
+    parser.add_argument(
+        "-nl",
+        "--notch_luma",
+        action="store_true",
+        help="Notch filters luma at colorburst to prevent crosstalk in simpler\
+            Y/C decoders.")
     parser.add_argument(
         "-n",
         "--noise",
@@ -92,17 +98,6 @@ def print_err_quit(message: str):
     print("Error: "+message, file=sys.stderr)
     sys.exit()
 
-# B-Y and R-Y reduction factors
-BY_rf = 0.492111
-RY_rf = 0.877283
-
-# derived from the NTSC base matrix of luminance and color-difference
-RGB_to_YUV = np.array([
-    [ 0.299,        0.587,        0.114],
-    [-0.299*BY_rf, -0.587*BY_rf,  0.886*BY_rf],
-    [ 0.701*RY_rf, -0.587*RY_rf, -0.114*RY_rf]
-], np.float64)
-
 ### filtering and raster config
 
 from dataclasses import dataclass, field
@@ -131,6 +126,7 @@ class RasterTimings:
     # vertical timings, see Figure 7 in SMPTE 170M-2004
     # start of
     V_BLANK_INT: int        # length of blanking interval, in lines
+    V_ACTIVE_START: int     # line to start drawing active image
     # starting line of vsync pre-equalizing pulse interval
     V_PREQ: int
     # starting line of vsync pulse interval
@@ -209,7 +205,8 @@ def configure_filters():
         V_PREQ = 3,
         V_SERR = 6,
         V_POEQ = 9,
-        V_BLANK_INT = 22,
+        V_BLANK_INT = 20,
+        V_ACTIVE_START = 22,
 
         INTERLACED = True,
 
@@ -282,9 +279,11 @@ def encode_field(
     v = 0 # v counter; field only
     # buffer index
     b = b % r.FULL_H_PX
+    active_start = r.V_ACTIVE_START
+    active_end = active_start + r.ACTIVE_H_PX/2
     while v <= r.HALF_H_PX:
         # input index
-        y = (v - r.V_BLANK_INT) * 2 + int(not (field & 1) ^ flip_field)
+        y = (v - active_start) * 2 + int(not (field & 1) ^ flip_field)
         # line buffer in IRE units
         if debug:
             print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
@@ -301,18 +300,15 @@ def encode_field(
             elif v < r.V_POEQ:
                 raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
                 raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-            elif v < r.V_BLANK_INT:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
-            elif v < r.V_BLANK_INT + r.ACTIVE_H_PX/2:
+            elif v >= active_start and v < active_end:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y])
-            elif v == r.HALF_H_PX:
+            else:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
+            if v == r.HALF_H_PX:
                 # in interlaced, this last line is split on even fields
                 phase_acc -= r.HALF_W_PX
                 phase_acc = mod_phase_acc(phase_acc)
                 break
-            else:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
         # vsync, field 2/4
         else:
             if v < r.V_PREQ:
@@ -340,9 +336,7 @@ def encode_field(
                 phase_acc = mod_phase_acc(phase_acc)
                 v += 1
                 continue
-            elif v < r.V_BLANK_INT:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
-            elif v < r.V_BLANK_INT + r.ACTIVE_H_PX/2:
+            elif v >= active_start and v < active_end:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y])
             else:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
@@ -460,6 +454,90 @@ def generate_carrier(sample: int):
     time_const = 2*np.pi*r.F_SC*(sample/r.FS)
     return -np.sin(time_const), -np.cos(time_const)
 
+# B-Y and R-Y reduction factors
+BY_rf = 0.492111
+RY_rf = 0.877283
+
+# derived from the NTSC base matrix of luminance and color-difference
+RGB_to_YUV = np.array([
+    [ 0.299,        0.587,        0.114],
+    [-0.299*BY_rf, -0.587*BY_rf,  0.886*BY_rf],
+    [ 0.701*RY_rf, -0.587*RY_rf, -0.114*RY_rf]
+], np.float64)
+
+def encode_image(image, args, field, phase_acc, b):
+    """
+    Encodes an image into a single frame (two fields.)
+    
+    :param image: Pillow Image to be encoded.
+    :param args: argparse arguments. see -h.
+
+        used arguments:
+        - `prefilter_disable`
+        - `notch_luma`
+        - `flip_field`
+        - `debug`
+        - `disable`
+
+    :param field: field counter.
+    :param phase_acc: phase accumulator counter.
+    :param b: Raster buffer line index.
+    """
+    res = Image.Resampling.LANCZOS
+    image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=res)
+    image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=res)
+    # convert to float
+    nd_img = np.array(image.convert("RGB"))
+    nd_img = nd_img / np.float64(255)
+    nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
+    print(nd_img.shape)
+    # squeeze image into target resolution
+    # nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
+    # nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
+    # TODO: make this optional
+    # downsample chroma channels by half, according to 4:2:2 subsampling
+    nd_img[..., 1] = resample(
+        resample(nd_img[..., 1], r.ACTIVE_W_PX//2, axis=1),
+        r.ACTIVE_W_PX, axis=1)
+    nd_img[..., 2] = resample(resample(
+        nd_img[..., 2], r.ACTIVE_W_PX//2, axis=1),
+        r.ACTIVE_W_PX, axis=1)
+    print(nd_img.shape)
+
+    # prefilter, if permitted
+    if not args.prefilter_disable:
+        from scipy import signal
+        # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
+        b_chroma, a_chroma = signal.iirdesign(
+            1.3e6,
+            3.6e6,
+            gpass=2,
+            gstop=20,
+            analog=False,
+            ftype="butter",
+            fs=r.FS
+        )
+        nd_img[..., 1] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 1])
+        nd_img[..., 2] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 2])
+    
+    if args.notch_luma:
+        # simple notch
+        bw = 1.3e6
+        b_luma, a_luma = signal.iirnotch(r.F_SC, r.F_SC/bw, fs=r.FS)
+        nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
+
+    # convert to IRE
+    nd_img *= 100
+    raster_buf = np.empty((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+    raster_buf[0], phase_acc, field, b = encode_field(
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
+        args.debug, args.disable)
+    raster_buf[0], phase_acc, field, b = encode_field(
+        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
+        args.debug, args.disable)
+    
+    return raster_buf, field, phase_acc, b
+
 def main(argv=None):
     args = parse_argv(argv or sys.argv)
 
@@ -469,62 +547,19 @@ def main(argv=None):
     global r
     configure_filters()
 
-    # convert to float
-    nd_img = np.array(image.convert("RGB"))
-    nd_img = nd_img / np.float64(255)
-    nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
-    print(nd_img.shape)
-    # squeeze image into target resolution
-    nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
-    nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
-    print(nd_img.shape)
-
-    # prefilter, if permitted
-    if args.prefilter:
-        from scipy import signal
-        # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
-        b_chroma, a_chroma = signal.iirdesign(
-            1.3e6  ,
-            3.6e6,
-            gpass=0.1,
-            gstop=20,
-            analog=False,
-            ftype="butter",
-            fs=r.FS
-        )
-        nd_img[..., 1] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 1])
-        nd_img[..., 2] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 2])
-        # simple notch
-        b_luma, a_luma = signal.iirnotch(r.F_SC, 1.5, fs=r.FS)
-        nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
-
-    # convert to IRE
-    nd_img *= 100
-
-    raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
-
     # phase_acc is used for colorburst phase, and also vsync serration phase
     phase_acc = 0
     b = 0
     field = 0
 
     # encode first frame
-    raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
-        args.debug, args.disable)
-    raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
-        args.debug, args.disable)
 
-    for _ in range(args.frames-1):
-        buffer = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
-        buffer[0], phase_acc, field, b = encode_field(
-            buffer[0], nd_img, field, phase_acc, b, args.flip_field,
-            args.debug, args.disable)
-        buffer[0], phase_acc, field, b = encode_field(
-            buffer[0], nd_img, field, phase_acc, b, args.flip_field,
-            args.debug, args.disable)
-        raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
+    raster_buf, field, phase_acc, b = encode_image(image, args, field, phase_acc, b)
+
+    if args.frames-1 > 0:
+        for _ in range(args.frames-1):
+            buffer, field, phase_acc, b = encode_image(image, args, field, phase_acc, b)
+            raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
 
     rng = np.random.default_rng()
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
