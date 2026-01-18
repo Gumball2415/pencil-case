@@ -235,6 +235,55 @@ def inc_line(b: int):
     b = (b + 1) % r.FULL_H_PX
     return b
 
+def generate_t_pulse(width: int):
+    """
+    Generates a raised cosine impulse
+    
+    :param width: width of pulse, in samples
+    :type width: int
+    """
+    t = np.linspace(-width/2, width/2, width, endpoint=True)
+    pulse = (np.cos(np.pi*t/width)+1)/2
+    pulse /= (np.sum(pulse))
+    return pulse
+
+def generate_sync(raster_buf):
+    global r
+    transition = generate_t_pulse(round(r.H_SYNC_ENV*1e-9*r.FS))
+    plot_signal(transition)
+    return raster_buf
+
+def generate_colorburst(raster_buf, phase_acc):
+    cb_env = gate_cb()
+    return
+
+def gate_cb():
+    """
+    Returns a scanline of factor values to gate the colorburst, where the final
+    colorburst signal can be calculated as `gate_cb() * carrier_arr`.
+    """
+    global r
+    transition = generate_t_pulse(round(r.CB_BURST_ENV*1e-9*r.FS))
+    gate = np.zeros(r.FULL_W_PX, dtype=np.float64)
+
+    cb_start = round(r.CB_BURST_START / r.F_SC * r.FS)
+    cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS)
+    cb_end = cb_start + cb_width
+
+    gate[cb_start:cb_end] = 1
+    gate = np.convolve(gate, transition, mode="same")
+    return gate
+
+def gate_active():
+    """
+    Returns a scanline of factor values to gate the active video, where the final signal can be calculated as `gate_cb() * signal_arr`.
+    """
+    global r
+    transition = generate_t_pulse(round(r.H_BLANK_ENV*1e-9*r.FS))
+    gate = np.zeros(r.FULL_W_PX, dtype=np.float64)
+    gate[r.ACTIVE_W_START:r.ACTIVE_W_END] = 1
+    gate = np.convolve(gate, transition, mode="same")
+    return gate
 
 def encode_field(
         raster_buf,
@@ -383,6 +432,12 @@ def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
     cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS)
     cb_end = cb_start + cb_width
 
+    cb_env = r.CB_BURST_ENV*1e-9*r.FS
+    gate_cb_env = gate_cb()
+
+    active_env = round(r.H_BLANK_ENV*1e-9*r.FS)
+    gate_active_env = gate_active()
+
     while h < r.FULL_W_PX:
         s, c = generate_carrier(phase_acc + h)
         # hack: vhs-decode cvbs decodes color 180 offset!
@@ -393,19 +448,10 @@ def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
             # starting second half
             line_buf[h] = r.SIG_SYNC
         # colorburst
-        elif h >= cb_start - cv_env and h < cb_end:
-        # elif h >= r.H_SYNC_LENGTH_PX and h < r.ACTIVE_W_START:
-            # colorburst envelope
-            # raised cosine shaping
-            # if (h < cb_start):
-            #     t = h - cb_start
-            #     cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
-            # elif (h >= cb_end - cv_env):
-            #     t = cb_end - cv_env - h
-            #     cb_sample *= (np.cos(np.pi*t/cv_env)+1)/2
-            line_buf[h] += cb_sample * r.SIG_CBAMP / 2
+        elif h >= cb_start - cb_env  - cv_env and h < cb_end + cb_env:
+            line_buf[h] += cb_sample * r.SIG_CBAMP / 2 * gate_cb_env[h]
         # active
-        elif h >= r.ACTIVE_W_START and h < r.ACTIVE_W_END and input_buf is not None:
+        elif h >= r.ACTIVE_W_START - active_env and h < r.ACTIVE_W_END + active_env and input_buf is not None:
             # grab line
             t = h - r.ACTIVE_W_START - r.ACTIVE_W_OFFS
             if t >= 0 and t < r.ACTIVE_W_PX:
@@ -413,12 +459,12 @@ def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
             else:
                 line_buf[h] = encode_active(
                     s, c, np.array([0, 0, 0], dtype=np.float64), disable)
+            line_buf[h] *= gate_active_env[h]
         h += 1
     phase_acc += h
     phase_acc = mod_phase_acc(phase_acc)
     return line_buf, phase_acc
 
-# 
 def encode_active(s: int, c: int, input, disable: str = None):
     """
     during active video, convert YUV input to composite
@@ -452,7 +498,7 @@ def generate_carrier(sample: int):
     """
     global r
     time_const = 2*np.pi*r.F_SC*(sample/r.FS)
-    return -np.sin(time_const), -np.cos(time_const)
+    return np.sin(time_const), np.cos(time_const)
 
 # B-Y and R-Y reduction factors
 BY_rf = 0.492111
@@ -493,15 +539,6 @@ def encode_image(image, args, field, phase_acc, b):
     # squeeze image into target resolution
     # nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
     # nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
-    # TODO: make this optional
-    # downsample chroma channels by half, according to 4:2:2 subsampling
-    # nd_img[..., 1] = resample(
-    #     resample(nd_img[..., 1], r.ACTIVE_W_PX//2, axis=1),
-    #     r.ACTIVE_W_PX, axis=1)
-    # nd_img[..., 2] = resample(resample(
-    #     nd_img[..., 2], r.ACTIVE_W_PX//2, axis=1),
-    #     r.ACTIVE_W_PX, axis=1)
-
     # prefilter, if permitted
     if not args.prefilter_disable:
         from scipy import signal
@@ -527,6 +564,10 @@ def encode_image(image, args, field, phase_acc, b):
     # convert to IRE
     nd_img *= 100
     raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+
+    # pregenerate sync and colorburst
+    sync_buf = generate_sync(raster_buf[0])
+
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
         args.debug, args.disable)
@@ -591,8 +632,8 @@ def plot_signal(arr):
     dws = 1
     ups = dws*8
     x_s2 = x_s * int(ups/dws)
-    x = np.linspace(0, x_s, num=x_s)
-    x_new = np.linspace(0, x_s, num=x_s2, endpoint=True)
+    x = np.linspace(0, x_s, num=x_s, endpoint=False)
+    x_new = np.linspace(0, x_s, num=x_s2, endpoint=False)
     plt.plot(x, arr, ".", color="gray")
     plt.plot(x_new, resample_poly(arr, ups, dws))
     plt.show()
