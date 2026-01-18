@@ -4,7 +4,7 @@ yet another composite filter, in Python
 
 ![debug graph of encoding and decoding](docs/example.png)
 
-this filter encodes an input image to composite baseband according to BT.1700 (no blanking, no sync), and then decodes back to RGB.
+this filter encodes an input image to composite baseband according to BT.1700 and then decodes back to RGB.
 
 ![the PM5544 test card before filtering](docs/Pm5544_ntsc-2.png)
 
@@ -19,11 +19,12 @@ SMPTE color bars test pattern taken from [Wikimedia Commons](https://commons.wik
 
 ### Libraries
 
-```python
-numpy==2.3.0
-pillow==11.2.1
-scipy==1.15.3
-matplotlib==3.10.3
+```requirements.txt
+matplotlib==3.10.8
+numpy==2.4.1
+Pillow==12.1.0
+scipy==1.17.0
+soundfile==0.13.1
 ```
 
 ## Usage

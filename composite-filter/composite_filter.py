@@ -526,7 +526,7 @@ def encode_image(image, args, field, phase_acc, b):
 
     # convert to IRE
     nd_img *= 100
-    raster_buf = np.empty((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+    raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
         args.debug, args.disable)

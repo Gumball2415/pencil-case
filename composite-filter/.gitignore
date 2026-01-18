@@ -3,3 +3,4 @@
 *_env
 *_ppucvbs_*
 *__pycache__
+.env
