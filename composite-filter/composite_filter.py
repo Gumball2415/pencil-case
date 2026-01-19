@@ -227,8 +227,8 @@ def configure_filters():
     )
     print(r)
 
-def mod_phase_acc(phase_acc: int):
-    phase_acc = phase_acc % (r.FULL_W_PX*2)
+def inc_phase_acc(phase_acc: int, increment: int):
+    phase_acc = (phase_acc+increment) % (r.FULL_W_PX*2)
     return phase_acc
 
 def inc_line(b: int):
@@ -247,15 +247,73 @@ def generate_t_pulse(width: int):
     pulse /= (np.sum(pulse))
     return pulse
 
-def generate_sync(raster_buf):
+def generate_sync(
+        raster_buf,
+        phase_acc: int,
+        b: int,
+        debug: bool = False,):
     global r
     transition = generate_t_pulse(round(r.H_SYNC_ENV*1e-9*r.FS))
-    plot_signal(transition)
-    return raster_buf
+    # plot_signal(transition)
 
-def generate_colorburst(raster_buf, phase_acc):
-    cb_env = gate_cb()
-    return
+    for field in range(4):
+        v = 0
+        while v <= r.HALF_H_PX:
+            # vsync, field 1/3
+            if field & 1 == 0:
+                if v < r.V_PREQ:
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                elif v < r.V_SERR:
+                    raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
+                    raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
+                elif v < r.V_POEQ:
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                else:
+                    raster_buf[b] = encode_hsync(raster_buf[b])
+                    phase_acc = inc_phase_acc(phase_acc, r.FULL_W_PX)
+                if v == r.HALF_H_PX:
+                    # in interlaced, this last line is split on even fields
+                    phase_acc = inc_phase_acc(phase_acc, -r.HALF_W_PX)
+                    break
+            # vsync, field 2/4
+            else:
+                if v < r.V_PREQ:
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    b = inc_line(b)
+                    v += 1
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    continue
+                elif v < r.V_SERR:
+                    raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
+                    b = inc_line(b)
+                    v += 1
+                    raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
+                    continue
+                elif v < r.V_POEQ:
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    b = inc_line(b)
+                    v += 1
+                    raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+                    continue
+                elif v == r.V_POEQ:
+                    b = inc_line(b)
+                    # restore last line split from previous field
+                    phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
+                    v += 1
+                    continue
+                else:
+                    raster_buf[b] = encode_hsync(raster_buf[b])
+                    phase_acc = inc_phase_acc(phase_acc, r.FULL_W_PX)
+
+            b = inc_line(b)
+            v += 1
+
+    for line in range(raster_buf.shape[0]):
+        raster_buf[line] = np.convolve(raster_buf[line], transition, mode="same")
+
+    return raster_buf
 
 def gate_cb():
     """
@@ -263,11 +321,14 @@ def gate_cb():
     colorburst signal can be calculated as `gate_cb() * carrier_arr`.
     """
     global r
-    transition = generate_t_pulse(round(r.CB_BURST_ENV*1e-9*r.FS))
+    env_px = r.CB_BURST_ENV*1e-9*r.FS
+    env_risetime = r.CB_BURST_ENV*1e-9*r.FS * 0.964
+
+    transition = generate_t_pulse(round(env_px))
     gate = np.zeros(r.FULL_W_PX, dtype=np.float64)
 
-    cb_start = round(r.CB_BURST_START / r.F_SC * r.FS)
-    cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS)
+    cb_start = round(r.CB_BURST_START / r.F_SC * r.FS - env_risetime)
+    cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS + env_risetime*2)
     cb_end = cb_start + cb_width
 
     gate[cb_start:cb_end] = 1
@@ -276,7 +337,8 @@ def gate_cb():
 
 def gate_active():
     """
-    Returns a scanline of factor values to gate the active video, where the final signal can be calculated as `gate_cb() * signal_arr`.
+    Returns a scanline of factor values to gate the active video, where the 
+    final signal can be calculated as `gate_active() * signal_arr`.
     """
     global r
     transition = generate_t_pulse(round(r.H_BLANK_ENV*1e-9*r.FS))
@@ -300,29 +362,36 @@ def encode_field(
     :param raster_buf:
         nd-array raster buffer to encode images in. Must be able to overwrite 
         lines for vsync generation.
+
     :param nd_img:
         input image buffer of active width and height. Must be YUV formatted 
         with range -1.0 to 1.0.
+
+    :type field: int
     :param field:
         Field type. range is 0-7.
-    :type field: int
+
+    :type phase_acc: int
     :param phase_acc:
         Phase accumulator. Used for colorburst phase tracking, and vsync 
         alignment tracking.
-    :type phase_acc: int
+
+    :type b: int
     :param b:
         Raster buffer line index. Used for interlaced indexing..
-    :type b: int
+
+    :type flip_field: bool
     :param flip_field:
         Switches odd/even field to be encoded. default: bottom field first
-    :type flip_field: bool
+
+    :type debug: bool
     :param debug:
         Print debug information.
-    :type debug: bool
+
+    :type debug: str
     :param disable:
         Disable "chroma" by setting saturation to 0, or "luma" by setting luma 
         to 50 IRE.
-    :type debug: str
     """
     global r
     v = 0 # v counter; field only
@@ -336,57 +405,30 @@ def encode_field(
         # line buffer in IRE units
         if debug:
             print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
-        phase_acc = mod_phase_acc(phase_acc)
 
         # vsync, field 1/3
         if field & 1 == 0:
-            if v < r.V_PREQ:
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-            elif v < r.V_SERR:
-                raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
-                raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
-            elif v < r.V_POEQ:
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
+            if v < r.V_POEQ:
+                phase_acc = inc_phase_acc(phase_acc, r.FULL_W_PX)
             elif v >= active_start and v < active_end:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y])
+                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y], disable)
             else:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None)
+                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
             if v == r.HALF_H_PX:
                 # in interlaced, this last line is split on even fields
-                phase_acc -= r.HALF_W_PX
-                phase_acc = mod_phase_acc(phase_acc)
+                phase_acc = inc_phase_acc(phase_acc, -r.HALF_W_PX)
                 break
-        # vsync, field 2/4
         else:
-            if v < r.V_PREQ:
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                b = inc_line(b)
-                v += 1
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                continue
-            elif v < r.V_SERR:
-                raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
-                b = inc_line(b)
-                v += 1
-                raster_buf[b], phase_acc = encode_vserr(raster_buf[b], phase_acc)
-                continue
-            elif v < r.V_POEQ:
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                b = inc_line(b)
-                v += 1
-                raster_buf[b], phase_acc = encode_eq_pulse(raster_buf[b], phase_acc)
-                continue
+            if v < r.V_POEQ:
+                phase_acc = inc_phase_acc(phase_acc, r.FULL_W_PX)
             elif v == r.V_POEQ:
                 b = inc_line(b)
                 # restore last line split from previous field
-                phase_acc += r.HALF_W_PX
-                phase_acc = mod_phase_acc(phase_acc)
+                phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
                 v += 1
                 continue
             elif v >= active_start and v < active_end:
-                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y])
+                raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, nd_img[y], disable)
             else:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
 
@@ -394,64 +436,58 @@ def encode_field(
         #     plot_signal(raster_buf[b])
         b = inc_line(b)
         v += 1
+
     field = (field+1)%8
     return raster_buf, phase_acc, field, b
 
+def encode_hsync(line_buf):
+    global r
+    line_buf[:r.H_SYNC_LENGTH_PX] = r.SIG_SYNC
+    return line_buf
+
 def encode_eq_pulse(line_buf, phase_acc: int):
     global r
-    # line buffer in IRE units
-    h = 0 # h counter
-    while h < r.HALF_W_PX:
-        if h < r.H_SYNC_LENGTH_PX/2:
-            line_buf[(h+phase_acc) % r.FULL_W_PX] = r.SIG_SYNC
-        h += 1
 
-    phase_acc += h
-    phase_acc = mod_phase_acc(phase_acc)
+    start = phase_acc % r.FULL_W_PX
+    end = start + r.H_SYNC_LENGTH_PX//2
+    line_buf[start:end] = r.SIG_SYNC
+
+    phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
     return line_buf, phase_acc
 
 def encode_vserr(line_buf, phase_acc: int):
     global r
     # line buffer in IRE units
-    h = 0 # h counter
-    while h < r.HALF_W_PX:
-        if h < r.HALF_W_PX - r.H_SYNC_LENGTH_PX:
-            line_buf[(h+phase_acc) % r.FULL_W_PX] = r.SIG_SYNC
-        h += 1
+    start = phase_acc % r.FULL_W_PX
+    end = start + r.HALF_W_PX - r.H_SYNC_LENGTH_PX
+    line_buf[start:end] = r.SIG_SYNC
 
-    phase_acc += h
-    phase_acc = mod_phase_acc(phase_acc)
+    phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
     return line_buf, phase_acc
 
+def generate_vsync():
+    return
+
 def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
+    """
+    Encodes a non-vsync scanline.
+    """
     global r
     h = 0 # h counter
 
-    cv_env = round(r.CB_BURST_ENV * 1e-9 * r.FS)
-    cb_start = round(r.CB_BURST_START / r.F_SC * r.FS)
-    cb_width = round((r.CB_BURST_WIDTH-1) / r.F_SC * r.FS)
-    cb_end = cb_start + cb_width
-
-    cb_env = r.CB_BURST_ENV*1e-9*r.FS
     gate_cb_env = gate_cb()
 
     active_env = round(r.H_BLANK_ENV*1e-9*r.FS)
     gate_active_env = gate_active()
 
+    # TODO: do this per-scanline as a ndarray operation
     while h < r.FULL_W_PX:
         s, c = generate_carrier(phase_acc + h)
-        # hack: vhs-decode cvbs decodes color 180 offset!
-        # so, encode colorburst offset by 180
         cb_sample = s*r.CB_U + c*r.CB_V
-        # hsync
-        if h < r.H_SYNC_LENGTH_PX:
-            # starting second half
-            line_buf[h] = r.SIG_SYNC
         # colorburst
-        elif h >= cb_start - cb_env  - cv_env and h < cb_end + cb_env:
-            line_buf[h] += cb_sample * r.SIG_CBAMP / 2 * gate_cb_env[h]
+        line_buf[h] += cb_sample * r.SIG_CBAMP / 2 * gate_cb_env[h]
         # active
-        elif h >= r.ACTIVE_W_START - active_env and h < r.ACTIVE_W_END + active_env and input_buf is not None:
+        if h >= r.ACTIVE_W_START - active_env and h < r.ACTIVE_W_END + active_env and input_buf is not None:
             # grab line
             t = h - r.ACTIVE_W_START - r.ACTIVE_W_OFFS
             if t >= 0 and t < r.ACTIVE_W_PX:
@@ -461,8 +497,7 @@ def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
                     s, c, np.array([0, 0, 0], dtype=np.float64), disable)
             line_buf[h] *= gate_active_env[h]
         h += 1
-    phase_acc += h
-    phase_acc = mod_phase_acc(phase_acc)
+    phase_acc = inc_phase_acc(phase_acc, h)
     return line_buf, phase_acc
 
 def encode_active(s: int, c: int, input, disable: str = None):
@@ -497,7 +532,7 @@ def generate_carrier(sample: int):
     :type sample: int
     """
     global r
-    time_const = 2*np.pi*r.F_SC*(sample/r.FS)
+    time_const = 2*np.pi*r.F_SC*((sample + 0.5)/r.FS)
     return np.sin(time_const), np.cos(time_const)
 
 # B-Y and R-Y reduction factors
@@ -532,13 +567,12 @@ def encode_image(image, args, field, phase_acc, b):
     res = Image.Resampling.LANCZOS
     image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=res)
     image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=res)
+
     # convert to float
     nd_img = np.array(image.convert("RGB"))
     nd_img = nd_img / np.float64(255)
     nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
-    # squeeze image into target resolution
-    # nd_img = resample(nd_img, r.ACTIVE_H_PX, axis=0)
-    # nd_img = resample(nd_img, r.ACTIVE_W_PX, axis=1)
+
     # prefilter, if permitted
     if not args.prefilter_disable:
         from scipy import signal
@@ -564,16 +598,21 @@ def encode_image(image, args, field, phase_acc, b):
     # convert to IRE
     nd_img *= 100
     raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+    sync_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
 
-    # pregenerate sync and colorburst
-    sync_buf = generate_sync(raster_buf[0])
+    # pregenerate sync for full frame
+    sync_buf[0] = generate_sync(sync_buf[0], phase_acc, b, args.debug)
 
+    # insert active video inside sync
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
         args.debug, args.disable)
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
         args.debug, args.disable)
+
+    # TODO: per-field encoding
+    raster_buf += sync_buf
     
     return raster_buf, field, phase_acc, b
 
