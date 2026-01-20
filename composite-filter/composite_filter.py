@@ -43,6 +43,12 @@ def parse_argv(argv):
         default=0.0,
         help="Sigma of gaussian noise to add to the signal, in units of IRE. Default == 0.0")
     parser.add_argument(
+        "-as",
+        "--active_scale",
+        type=int,
+        default=None,
+        help="Compensated active video width, in samples. Default = None.")
+    parser.add_argument(
         "--frames",
         type=int,
         default=2,
@@ -559,14 +565,19 @@ def encode_image(image, args, field, phase_acc, b):
         - `flip_field`
         - `debug`
         - `disable`
+        - `active_scale`
 
     :param field: field counter.
     :param phase_acc: phase accumulator counter.
     :param b: Raster buffer line index.
     """
     res = Image.Resampling.LANCZOS
-    image = image.resize((image.size[0], r.ACTIVE_H_PX), resample=res)
-    image = image.resize((r.ACTIVE_W_PX, r.ACTIVE_H_PX), resample=res)
+    active_width = round(r.ACTIVE_W_PX**2/args.active_scale) if args.active_scale is not None else r.ACTIVE_W_PX
+    image = image.resize((active_width, r.ACTIVE_H_PX), resample=res)
+    if args.active_scale is not None:
+        padding = Image.new(image.mode, (r.ACTIVE_W_PX, r.ACTIVE_H_PX))
+        padding.paste(image, (round((r.ACTIVE_W_PX-active_width)/2), 0))
+        image = padding 
 
     # convert to float
     nd_img = np.array(image.convert("RGB"))
@@ -598,10 +609,6 @@ def encode_image(image, args, field, phase_acc, b):
     # convert to IRE
     nd_img *= 100
     raster_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
-    sync_buf = np.zeros((1, r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
-
-    # pregenerate sync for full frame
-    sync_buf[0] = generate_sync(sync_buf[0], phase_acc, b, args.debug)
 
     # insert active video inside sync
     raster_buf[0], phase_acc, field, b = encode_field(
@@ -610,9 +617,6 @@ def encode_image(image, args, field, phase_acc, b):
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
         args.debug, args.disable)
-
-    # TODO: per-field encoding
-    raster_buf += sync_buf
     
     return raster_buf, field, phase_acc, b
 
@@ -628,16 +632,22 @@ def main(argv=None):
     # phase_acc is used for colorburst phase, and also vsync serration phase
     phase_acc = 0
     b = 0
-    field = 0
+    frame = 0
 
+    # TODO: per-field encoding
     # encode first frame
-
-    raster_buf, field, phase_acc, b = encode_image(image, args, field, phase_acc, b)
+    raster_buf, frame, phase_acc, b = encode_image(image, args, frame, phase_acc, b)
 
     if args.frames-1 > 0:
         for _ in range(args.frames-1):
-            buffer, field, phase_acc, b = encode_image(image, args, field, phase_acc, b)
+            buffer, frame, phase_acc, b = encode_image(image, args, frame, phase_acc, b)
             raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
+
+    # pregenerate sync for full frame
+    sync_buf = np.zeros((r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
+    sync_buf = generate_sync(sync_buf, phase_acc, b, args.debug)
+    for frame in range(raster_buf.shape[0]):
+        raster_buf[frame] += sync_buf
 
     rng = np.random.default_rng()
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
@@ -653,10 +663,11 @@ def main(argv=None):
     # repeat signal in case of field dropping
     raster_buf = np.tile(raster_buf, 2)
 
+    # TODO: use pyflac and encode signal in realtime
     import soundfile as sf
     srate_name = str(round(r.FS/1e6, 4))
     
-    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.flac", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
+    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.cvbs", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
 
 def plot_2darr(arr):
     plt.figure(tight_layout=True, figsize=(10,5.625))
