@@ -254,13 +254,11 @@ def generate_t_pulse(width: int):
     return pulse
 
 def generate_sync(
-        raster_buf,
+        raster_buf: np.ndarray,
         phase_acc: int,
-        b: int,
-        debug: bool = False,):
+        b: int):
     global r
     transition = generate_t_pulse(round(r.H_SYNC_ENV*1e-9*r.FS))
-    # plot_signal(transition)
 
     for field in range(4):
         v = 0
@@ -354,8 +352,8 @@ def gate_active():
     return gate
 
 def encode_field(
-        raster_buf,
-        nd_img,
+        raster_buf: np.ndarray,
+        nd_img: np.ndarray,
         field: int,
         phase_acc: int,
         b: int,
@@ -446,12 +444,12 @@ def encode_field(
     field = (field+1)%8
     return raster_buf, phase_acc, field, b
 
-def encode_hsync(line_buf):
+def encode_hsync(line_buf: np.ndarray):
     global r
     line_buf[:r.H_SYNC_LENGTH_PX] = r.SIG_SYNC
     return line_buf
 
-def encode_eq_pulse(line_buf, phase_acc: int):
+def encode_eq_pulse(line_buf: np.ndarray, phase_acc: int):
     global r
 
     start = phase_acc % r.FULL_W_PX
@@ -461,7 +459,7 @@ def encode_eq_pulse(line_buf, phase_acc: int):
     phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
     return line_buf, phase_acc
 
-def encode_vserr(line_buf, phase_acc: int):
+def encode_vserr(line_buf: np.ndarray, phase_acc: int):
     global r
     # line buffer in IRE units
     start = phase_acc % r.FULL_W_PX
@@ -471,15 +469,15 @@ def encode_vserr(line_buf, phase_acc: int):
     phase_acc = inc_phase_acc(phase_acc, r.HALF_W_PX)
     return line_buf, phase_acc
 
-def generate_vsync():
-    return
-
-def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
+def encode_line(
+        line_buf: np.ndarray,
+        phase_acc: int,
+        input_buf: np.ndarray=None,
+        disable: str = None):
     """
     Encodes a non-vsync scanline.
     """
     global r
-    h = 0 # h counter
 
     gate_cb_env = gate_cb()
 
@@ -487,26 +485,32 @@ def encode_line(line_buf, phase_acc: int, input_buf=None, disable: str = None):
     gate_active_env = gate_active()
 
     # TODO: do this per-scanline as a ndarray operation
-    while h < r.FULL_W_PX:
-        s, c = generate_carrier(phase_acc + h)
-        cb_sample = s*r.CB_U + c*r.CB_V
-        # colorburst
-        line_buf[h] += cb_sample * r.SIG_CBAMP / 2 * gate_cb_env[h]
-        # active
-        if h >= r.ACTIVE_W_START - active_env and h < r.ACTIVE_W_END + active_env and input_buf is not None:
-            # grab line
-            t = h - r.ACTIVE_W_START - r.ACTIVE_W_OFFS
-            if t >= 0 and t < r.ACTIVE_W_PX:
-                line_buf[h] = encode_active(s, c, input_buf[t], disable)
-            else:
-                line_buf[h] = encode_active(
-                    s, c, np.array([0, 0, 0], dtype=np.float64), disable)
-            line_buf[h] *= gate_active_env[h]
-        h += 1
-    phase_acc = inc_phase_acc(phase_acc, h)
+    t = np.arange(r.FULL_W_PX)
+    s, c = generate_carrier(phase_acc, t)
+    subcarrier = s*r.CB_U + c*r.CB_V
+    
+    # colorburst
+    if disable != "chroma":
+        line_buf += subcarrier * r.SIG_CBAMP / 2 * gate_cb_env
+    # active
+    start=r.ACTIVE_W_START - active_env
+    end=r.ACTIVE_W_END + active_env
+    active_start = round((r.ACTIVE_W_PX-(end-start)) / 2)
+    active_end = active_start + end-start
+    active = np.zeros((end-start), dtype=np.float64)
+    if input_buf is not None:
+        active = encode_active(
+            s[start:end], c[start:end],
+            input_buf[active_start:active_end], disable)
+    line_buf[start:end] += active * gate_active_env[start:end]
+    phase_acc = inc_phase_acc(phase_acc, r.FULL_W_PX)
     return line_buf, phase_acc
 
-def encode_active(s: int, c: int, input, disable: str = None):
+def encode_active(
+        s: np.ndarray,
+        c: np.ndarray,
+        input: np.ndarray,
+        disable: str = None):
     """
     during active video, convert YUV input to composite
     """
@@ -516,21 +520,21 @@ def encode_active(s: int, c: int, input, disable: str = None):
         encoded = (
             scale_factor * 50 +
             r.SIG_BLACK +
-            scale_factor * input[1] * s +
-            scale_factor * input[2] * c)
+            scale_factor * input[..., 1] * s +
+            scale_factor * input[..., 2] * c)
     elif disable == "chroma":
         encoded = (
-            scale_factor * input[0] +
+            scale_factor * input[..., 0] +
             r.SIG_BLACK)
     else:
         encoded = (
-            scale_factor * input[0] +
+            scale_factor * input[..., 0] +
             r.SIG_BLACK +
-            scale_factor * input[1] * s +
-            scale_factor * input[2] * c)
+            scale_factor * input[..., 1] * s +
+            scale_factor * input[..., 2] * c)
     return encoded
 
-def generate_carrier(sample: int):
+def generate_carrier(offset: int, time: np.ndarray):
     """
     generates a color subcarrier reference signal
     
@@ -538,7 +542,7 @@ def generate_carrier(sample: int):
     :type sample: int
     """
     global r
-    time_const = 2*np.pi*r.F_SC*((sample + 0.5)/r.FS)
+    time_const = 2*np.pi*r.F_SC*(((time + offset) + 0.5)/r.FS)
     return np.sin(time_const), np.cos(time_const)
 
 # B-Y and R-Y reduction factors
@@ -552,29 +556,62 @@ RGB_to_YUV = np.array([
     [ 0.701*RY_rf, -0.587*RY_rf, -0.114*RY_rf]
 ], np.float64)
 
-def encode_image(image, args, field, phase_acc, b):
+def encode_image(
+        image: Image.Image,
+        active_scale: int,
+        prefilter_disable: bool,
+        notch_luma: bool,
+        flip_field: bool,
+        debug: bool,
+        disable: str,
+        field:int,
+        phase_acc:int,
+        b:int):
     """
-    Encodes an image into a single frame (two fields.)
+    Encodes an image into a single frame (two fields.) No sync information is present.
     
     :param image: Pillow Image to be encoded.
     :param args: argparse arguments. see -h.
 
-        used arguments:
-        - `prefilter_disable`
-        - `notch_luma`
-        - `flip_field`
-        - `debug`
-        - `disable`
-        - `active_scale`
+    :type active_scale: int
+    :param active_scale:
+        If specified, the final decoded active image width. May be `None`.
 
+    :type prefilter_disable: bool
+    :param prefilter_disable:
+        Disables chroma lowpassing.
+
+    :type notch_luma: bool
+    :param notch_luma:
+        Enables subcarrier notch filtering on luma.
+
+    :type flip_field: bool
+    :param flip_field:
+        Swaps the top and bottom fields of the image.
+
+    :type debug: bool
+    :param debug:
+        Print/plot debugging information.
+
+    :type disable: str
+    :param disable:
+        Disable chroma or luma.
+
+    :type field: int
     :param field: field counter.
+
+    :type phase_acc: int
     :param phase_acc: phase accumulator counter.
+
+    :type b: int
     :param b: Raster buffer line index.
     """
     res = Image.Resampling.LANCZOS
-    active_width = round(r.ACTIVE_W_PX**2/args.active_scale) if args.active_scale is not None else r.ACTIVE_W_PX
+    active_width = round(r.ACTIVE_W_PX**2/active_scale) \
+        if active_scale is not None else r.ACTIVE_W_PX
+
     image = image.resize((active_width, r.ACTIVE_H_PX), resample=res)
-    if args.active_scale is not None:
+    if active_scale is not None:
         padding = Image.new(image.mode, (r.ACTIVE_W_PX, r.ACTIVE_H_PX))
         padding.paste(image, (round((r.ACTIVE_W_PX-active_width)/2), 0))
         image = padding 
@@ -585,7 +622,7 @@ def encode_image(image, args, field, phase_acc, b):
     nd_img = np.einsum('ij,klj->kli',RGB_to_YUV,nd_img, dtype=np.float64)
 
     # prefilter, if permitted
-    if not args.prefilter_disable:
+    if not prefilter_disable:
         from scipy import signal
         # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
         b_chroma, a_chroma = signal.iirdesign(
@@ -600,7 +637,7 @@ def encode_image(image, args, field, phase_acc, b):
         nd_img[..., 1] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 1])
         nd_img[..., 2] = signal.filtfilt(b_chroma, a_chroma, nd_img[..., 2])
     
-    if args.notch_luma:
+    if notch_luma:
         # simple notch
         bw = 1.3e6
         b_luma, a_luma = signal.iirnotch(r.F_SC, r.F_SC/bw, fs=r.FS)
@@ -612,11 +649,11 @@ def encode_image(image, args, field, phase_acc, b):
 
     # insert active video inside sync
     raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
-        args.debug, args.disable)
+        raster_buf[0], nd_img, field, phase_acc, b,
+        flip_field, debug, disable)
     raster_buf[0], phase_acc, field, b = encode_field(
-        raster_buf[0], nd_img, field, phase_acc, b, args.flip_field,
-        args.debug, args.disable)
+        raster_buf[0], nd_img, field, phase_acc, b,
+        flip_field, debug, disable)
     
     return raster_buf, field, phase_acc, b
 
@@ -636,16 +673,32 @@ def main(argv=None):
 
     # TODO: per-field encoding
     # encode first frame
-    raster_buf, frame, phase_acc, b = encode_image(image, args, frame, phase_acc, b)
+    raster_buf, frame, phase_acc, b = encode_image(
+        image,
+        args.active_scale,
+        args.prefilter_disable,
+        args.notch_luma,
+        args.flip_field,
+        args.debug,
+        args.disable,
+        frame, phase_acc, b)
 
     if args.frames-1 > 0:
         for _ in range(args.frames-1):
-            buffer, frame, phase_acc, b = encode_image(image, args, frame, phase_acc, b)
+            buffer, frame, phase_acc, b = encode_image(
+                image,
+                args.active_scale,
+                args.prefilter_disable,
+                args.notch_luma,
+                args.flip_field,
+                args.debug,
+                args.disable,
+                frame, phase_acc, b)
             raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
 
     # pregenerate sync for full frame
     sync_buf = np.zeros((r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
-    sync_buf = generate_sync(sync_buf, phase_acc, b, args.debug)
+    sync_buf = generate_sync(sync_buf, phase_acc, b)
     for frame in range(raster_buf.shape[0]):
         raster_buf[frame] += sync_buf
 
