@@ -37,6 +37,11 @@ def parse_argv(argv):
         help="Notch filters luma at colorburst to prevent crosstalk in simpler\
             Y/C decoders.")
     parser.add_argument(
+        "-fl",
+        "--fsc_limit",
+        action="store_true",
+        help="Limit frequency content to colorburst.")
+    parser.add_argument(
         "-n",
         "--noise",
         type=float,
@@ -118,7 +123,7 @@ class RasterTimings:
     CB_BURST_START: int # h.ref to burst start, in subcarrier cycles
     CB_BURST_WIDTH: int # full amplitude colorburst width, in subcarrier cycles
     CB_BURST_ENV: int   # colorburst transition time, in nanoseconds
-    CB_ANGLE: float     # subcarrier color angle, in degrees
+    CB_ANGLE: float     # subcarrier color angle, in radians
     CB_U: float = field(init=False) # subcarrier color angle, in UV
     CB_V: float = field(init=False)
 
@@ -182,8 +187,8 @@ class RasterTimings:
         s.ACTIVE_W_END = s.FULL_W_PX - s.H_ACTIVE_TO_SYNC_PX
         s.ACTIVE_W_OFFS = round(((s.ACTIVE_W_END - s.ACTIVE_W_START) - s.ACTIVE_W_PX) / 2)
 
-        s.CB_U = np.cos(s.CB_ANGLE*np.pi/180)
-        s.CB_V = np.sin(s.CB_ANGLE*np.pi/180)
+        s.CB_U = np.cos(s.CB_ANGLE)
+        s.CB_V = np.sin(s.CB_ANGLE)
 
 
 # global raster timing
@@ -195,9 +200,9 @@ def configure_filters():
     # from SMPTE 170M-2004
     # and Video Demystified, 4th ed.
     r = RasterTimings(
-        F_SC = 5e6*63/88,
-        F_H = 2/455 * 5e6*63/88,
-        F_V = 2/525 * 2/455 * 5e6*63/88,
+        F_SC = 315e6/88,
+        F_H = 2/455 * 315e6/88,
+        F_V = 2/525 * 2/455 * 315e6/88,
         FS = 13.5e6,
 
         H_SYNC_LENGTH = 4.7,
@@ -216,7 +221,7 @@ def configure_filters():
 
         INTERLACED = True,
 
-        CB_ANGLE = -180,
+        CB_ANGLE = -np.pi,
         CB_BURST_START = 19,
         CB_BURST_WIDTH = 9,
         CB_BURST_ENV = 300,
@@ -561,6 +566,7 @@ def encode_image(
         active_scale: int,
         prefilter_disable: bool,
         notch_luma: bool,
+        fsc_limit: bool,
         flip_field: bool,
         debug: bool,
         disable: str,
@@ -585,6 +591,10 @@ def encode_image(
     :param notch_luma:
         Enables subcarrier notch filtering on luma.
 
+    :type fsc_limit: bool
+    :param fsc_limit:
+        Limits frequency content to colorburst.
+
     :type flip_field: bool
     :param flip_field:
         Swaps the top and bottom fields of the image.
@@ -606,11 +616,13 @@ def encode_image(
     :type b: int
     :param b: Raster buffer line index.
     """
-    res = Image.Resampling.LANCZOS
     active_width = round(r.ACTIVE_W_PX**2/active_scale) \
         if active_scale is not None else r.ACTIVE_W_PX
 
-    image = image.resize((active_width, r.ACTIVE_H_PX), resample=res)
+    image = image.resize(
+        (active_width, r.ACTIVE_H_PX),
+        resample=Image.Resampling.LANCZOS,
+        reducing_gap=3)
     if active_scale is not None:
         padding = Image.new(image.mode, (r.ACTIVE_W_PX, r.ACTIVE_H_PX))
         padding.paste(image, (round((r.ACTIVE_W_PX-active_width)/2), 0))
@@ -642,6 +654,16 @@ def encode_image(
         bw = 1.3e6
         b_luma, a_luma = signal.iirnotch(r.F_SC, r.F_SC/bw, fs=r.FS)
         nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
+
+    # resample luma to make sure there is no content beyond 2xfsc
+    # NTSC
+    if fsc_limit:
+        factor=2
+        down = round(factor*r.F_SC/(r.FS/r.FULL_W_PX))
+        gauss_wnd = 100
+        nd_img = resample_poly(
+            resample_poly(nd_img,down ,r.FULL_W_PX, axis=1, window=("gaussian", gauss_wnd)),
+            r.FULL_W_PX, down, axis=1, window=("gaussian", gauss_wnd))
 
     # convert to IRE
     nd_img *= 100
@@ -678,6 +700,7 @@ def main(argv=None):
         args.active_scale,
         args.prefilter_disable,
         args.notch_luma,
+        args.fsc_limit,
         args.flip_field,
         args.debug,
         args.disable,
@@ -690,6 +713,7 @@ def main(argv=None):
                 args.active_scale,
                 args.prefilter_disable,
                 args.notch_luma,
+                args.fsc_limit,
                 args.flip_field,
                 args.debug,
                 args.disable,
