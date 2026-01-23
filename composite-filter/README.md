@@ -4,68 +4,97 @@ yet another composite filter, in Python
 
 ![debug graph of encoding and decoding](docs/example.png)
 
-this filter encodes an input image to composite baseband according to BT.1700 (no blanking, no sync), and then decodes back to RGB.
+this filter encodes an input image to composite baseband
+according to BT.1700. Outputs a flac-compressed 32-bit signal 
+sampled at 13.5MHz.
+currently decoding back to RGB is not yet implemented.
 
-![the PM5544 test card before filtering](docs/Pm5544_ntsc-2.png)
+## examples
 
-![the PM5544 test card after filtering](docs/Pm5544_ntsc-2_filt.png)
+SMPTE color bars test pattern taken from [Wikimedia
+Commons](https://commons.wikimedia.org/wiki/File:SMPTE_Color_Bars.svg).
 
-PM5544 test pattern taken from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
-SMPTE color bars test pattern taken from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:SMPTE_Color_Bars.svg).
+![the SMPTE color bars test card before filtering](input/SMPTEColorBars.png)
 
-## Requirements
+![the SMPTE color bars test card after encoding: at scanline 143](docs/SMPTEColorBars_scanline.png)
 
-- See `requirements.txt` for details.
+![the SMPTE color bars test card after encoding: the whole raster](docs/SMPTEColorBars_raster.png)
 
-### Libraries
+![the SMPTE color bars test card after decoding](output/SMPTEColorBars_transcode_01.png)
 
-```python
-numpy==2.3.0
-pillow==11.2.1
-scipy==1.15.3
-matplotlib==3.10.3
+Philips Circle test pattern taken from [Wikimedia
+Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
+
+![the Philips circle test card before filtering](input/PhilipsCircle.png)
+
+![the Philips circle test card after encoding: at scanline 143](docs/PhilipsCircle_scanline.png)
+
+![the Philips circle test card after encoding: the whole raster](docs/PhilipsCircle_raster.png)
+
+![the Philips circle test card after decoding](output/PhilipsCircle_transcode_01.png)
+
+## requirements and libraries
+
+- see `requirements.txt` for details.
+
+```requirements.txt
+matplotlib==3.10.8
+numpy==2.4.1
+Pillow==12.1.0
+scipy==1.17.0
+soundfile==0.13.1
 ```
 
-## Usage
+additionally, vhs-decode must also be installed and in path.
 
-```sh
-usage: composite_filter.py [-h] [-dbg] [-skp] [-nnv] [-pfd] [-prg] [-isf] [-irs] [-war] [-pic] [-rsm RESOLUTION_MULTIPLIER] input_image
+## usage
 
-yet another composite filter
+See `usage.txt` for details, or run `composite_filter.py -h`.
+
+```usage.txt
+usage: composite_filter.py [-h] [-d] [-f] [-pd] [-nl] [-fl] [-n NOISE]
+                           [-as ACTIVE_SCALE] [--frames FRAMES]
+                           [-x {chroma,luma}]
+                           input_image
+
+Composite encoder-decoder
 
 positional arguments:
   input_image           input image
 
 options:
   -h, --help            show this help message and exit
-  -dbg, --debug         enable debug plot
-  -skp, --skip-plot     skip plot
-  -nnv, --neigbor-vertical
-                        use nearest-neighbor scaling for vertical resolution
-  -pfd, --prefilter-disable
-                        disable image lowpassiing before encoding to composite
-  -prg, --progressive   scale to 240 lines instead of 480
-  -isf, --interlace-separate-frames
-                        output one file per field
-  -irs, --input-resolution-samplerate
-                        use the image input's horizontal resolution as samplerate. minimum is 720 pixels
-  -war, --wide-aspect-ratio
-                        use wide aspect ratio for output
-  -pic, --phase-invert-colorburst
-                        invert phase of colorburst
-  -rsm RESOLUTION_MULTIPLIER, --resolution-multiplier RESOLUTION_MULTIPLIER
-                        multiply the samplerate by x. makes the image sharper at the cost of filtering time
+  -d, --debug           debug messages
+  -f, --flip_field      Switch interlaced fields
+  -pd, --prefilter_disable
+                        Disables filtering of chroma before encoding.
+  -nl, --notch_luma     Notch filters luma at colorburst to prevent crosstalk
+                        in simpler Y/C decoders.
+  -fl, --fsc_limit      Limit frequency content to colorburst.
+  -n NOISE, --noise NOISE
+                        Sigma of gaussian noise to add to the signal, in units
+                        of IRE. Default == 0.0
+  -as ACTIVE_SCALE, --active_scale ACTIVE_SCALE
+                        Compensated active video width, in samples. Default =
+                        None.
+  --frames FRAMES       Number of whole frames to render (or, x2 fields).
+                        Default == 2
+  -x {chroma,luma}, --disable {chroma,luma}
+                        Disables chroma by setting UV to 0. Disables luma by
+                        setting Y to 0.5.
 
-version 0.0.2
+version 0.3.0
 ```
 
-## License
+additionally, [vhs-decode and ld-tools](https://github.com/oyvindln/vhs-decode) are used to generate decoded image examples.
+
+## license
 
 This work is licensed under the MIT-0 license.
 
-Copyright (C) Persune 2025.
+Copyright (C) Persune 2026.
 
-## Credits
+## credits
 
 Special thanks to:
 
@@ -74,8 +103,8 @@ Special thanks to:
 - Kagamiin
 - PinoBatch
 - LMP88959
-- Lockster and forple
+- Stephen Neal and Harry from Domesday86
 
-Dedicated to yoey
+Dedicated to yoey and _aitchFactor
 
 This would have not been possible without their help!

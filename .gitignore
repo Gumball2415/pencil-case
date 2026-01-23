@@ -2,3 +2,6 @@
 .vscode*
 __pycache__*
 debug*
+*.cvbs
+*_decode*
+*_transcode*

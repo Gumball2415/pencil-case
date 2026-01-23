@@ -1,0 +1,32 @@
+usage: composite_filter.py [-h] [-d] [-f] [-pd] [-nl] [-fl] [-n NOISE]
+                           [-as ACTIVE_SCALE] [--frames FRAMES]
+                           [-x {chroma,luma}]
+                           input_image
+
+Composite encoder-decoder
+
+positional arguments:
+  input_image           input image
+
+options:
+  -h, --help            show this help message and exit
+  -d, --debug           debug messages
+  -f, --flip_field      Switch interlaced fields
+  -pd, --prefilter_disable
+                        Disables filtering of chroma before encoding.
+  -nl, --notch_luma     Notch filters luma at colorburst to prevent crosstalk
+                        in simpler Y/C decoders.
+  -fl, --fsc_limit      Limit frequency content to colorburst.
+  -n NOISE, --noise NOISE
+                        Sigma of gaussian noise to add to the signal, in units
+                        of IRE. Default == 0.0
+  -as ACTIVE_SCALE, --active_scale ACTIVE_SCALE
+                        Compensated active video width, in samples. Default =
+                        None.
+  --frames FRAMES       Number of whole frames to render (or, x2 fields).
+                        Default == 2
+  -x {chroma,luma}, --disable {chroma,luma}
+                        Disables chroma by setting UV to 0. Disables luma by
+                        setting Y to 0.5.
+
+version 0.3.0
