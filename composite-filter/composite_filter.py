@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.signal import resample_poly, resample
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -764,6 +764,7 @@ def main(argv=None):
     # apply noise
     rng = np.random.default_rng(int.from_bytes(b"mango"))
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
+    raster_buf = np.clip(raster_buf, r.SIG_SYNC, a_max=None)
 
     if args.debug:
         plot_2darr(args.input_image.stem,
@@ -775,22 +776,22 @@ def main(argv=None):
         plot_signal(args.input_image.stem,
             raster_buf.reshape(
                 (args.frames+2),r.FULL_H_PX,
-                r.FULL_W_PX)[1][index:index+r.FULL_W_PX],
+                r.FULL_W_PX)[1][args.plot_scanline],
             args.quiet)
 
     raster_buf -= r.SIG_SYNC
     raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
     raster_buf -= 0.5
     raster_buf = np.clip(raster_buf, -1, 1)
-    raster_buf *= (2**31)
-    raster_buf = np.int32(raster_buf)
+    raster_buf *= (2**16)
+    raster_buf = np.int16(raster_buf)
 
     # TODO: use pyflac and encode signal in realtime
     import soundfile as sf
     srate_name = str(round(r.FS/1e6, 4))
     
-    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.cvbs", raster_buf,
-        subtype="PCM_24", samplerate=96000, format="FLAC")
+    sf.write(f"{image_filename}_{srate_name}MHz_16_bit.cvbs", raster_buf,
+        subtype="PCM_16", samplerate=96000, format="FLAC")
 
 def plot_2darr(name, arr, quiet=False):
     plt.figure(tight_layout=True, figsize=(20,13))

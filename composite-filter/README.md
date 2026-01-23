@@ -5,7 +5,7 @@ yet another composite filter, in Python
 ![debug graph of encoding and decoding](docs/example.png)
 
 this filter encodes an input image to composite baseband
-according to BT.1700. Outputs a flac-compressed 32-bit signal 
+according to BT.1700. outputs a FLAC-compressed 16-bit signal 
 sampled at 13.5MHz.
 currently decoding back to RGB is not yet implemented.
 
@@ -41,7 +41,7 @@ Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
 
 used with permission.
 
-this example uses the noise parameter of `8.0`.
+this example uses the noise parameter of `12.0`.
 
 ![cobalt teal: wind and rain before filtering](input/TheWindAndRainCBTL.png)
 
@@ -70,7 +70,8 @@ additionally, vhs-decode must also be installed and in path.
 See `usage.txt` for details, or run `composite_filter.py -h`.
 
 ```usage.txt
-usage: composite_filter.py [-h] [-d] [-f] [-pd] [-nl] [-fl] [-n NOISE]
+usage: composite_filter.py [-h] [-q] [-d] [-f] [-pd] [-nl] [-fl]
+                           [--plot_scanline PLOT_SCANLINE] [-n NOISE]
                            [-as ACTIVE_SCALE] [--frames FRAMES]
                            [-x {chroma,luma}]
                            input_image
@@ -82,6 +83,7 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  -q, --quiet           Do not print or plot.
   -d, --debug           debug messages
   -f, --flip_field      Switch interlaced fields
   -pd, --prefilter_disable
@@ -89,6 +91,8 @@ options:
   -nl, --notch_luma     Notch filters luma at colorburst to prevent crosstalk
                         in simpler Y/C decoders.
   -fl, --fsc_limit      Limit frequency content to colorburst.
+  --plot_scanline PLOT_SCANLINE
+                        Plot specified scanline. Default = 143
   -n NOISE, --noise NOISE
                         Sigma of gaussian noise to add to the signal, in units
                         of IRE. Default == 0.0
@@ -101,7 +105,7 @@ options:
                         Disables chroma by setting UV to 0. Disables luma by
                         setting Y to 0.5.
 
-version 0.3.0
+version 0.4.0
 ```
 
 additionally, [vhs-decode and ld-tools](https://github.com/oyvindln/vhs-decode) are used to generate decoded image examples.
