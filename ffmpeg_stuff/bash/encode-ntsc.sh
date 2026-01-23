@@ -1,13 +1,13 @@
 # vhs-decode and ld-decode suite must be in path
 echo "$1"
-dir=${1%/*}
-file=${1##*/}
-filename=${file%%.*}
-fullfilepath="$dir/$filename"
 
-echo "$fullfilepath"
+real="$(realpath "$1")"
+echo $real
 
-ffmpeg -hwaccel auto -i "$1" -an -vf \
+fullfilepath="${real%.*}"
+echo $fullfilepath
+
+ffmpeg -hwaccel auto -i "$real" -an -vf \
     "scale=758:480:flags=lanczos+accurate_rnd+full_chroma_int+bitexact,
     pad=758:486:0:3,
     fps=fps=60000/1001,
@@ -25,10 +25,9 @@ ffmpeg -hwaccel auto -i "$1" -an -vf \
 #     "${fullfilepath}_encode.tbc" "${fullfilepath}_encode_t.tbc"
 
 
-# todo: use separatefields approach
 ld-chroma-decoder --input-json "${fullfilepath}_encode.tbc.json"\
-    --decoder ntsc2d -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
-    | ffmpeg -y -hwaccel auto -i - -i "$1" \
+    --decoder ntsc3d -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
+    | ffmpeg -y -hwaccel auto -i - -i "$real" \
         -c:a copy \
         -c:v ffv1 \
             -level 3 \
@@ -42,20 +41,21 @@ ld-chroma-decoder --input-json "${fullfilepath}_encode.tbc.json"\
         -map 0:v:0 -map 1:a:0? \
     "${fullfilepath}_encode.mkv"
 
+# todo: use separatefields approach
 ffmpeg -y -hwaccel auto -i "${fullfilepath}_encode.mkv" \
     -filter_complex \
         "[0:v]il=l=d:c=d:a=d,
             split=2[top][bottom];
         [top]crop=iw:ih/2:0:0:keep_aspect=1,
-            scale=0:ih*2:flags=neighbor+accurate_rnd+full_chroma_int+bitexact 
+            scale=0:ih*2:flags=neighbor+accurate_rnd+full_chroma_int+bitexact
             [field1];
         [bottom]crop=iw:ih/2:0:(ih/2)+1:keep_aspect=1,
             scale=0:ih*2:flags=neighbor+accurate_rnd+full_chroma_int+bitexact,
             rgbashift=rv=1:gv=1:bv=1:av=1:edge=1[field2];
         [field1][field2]framepack=frameseq,
-            scale=1440:1080:flags=lanczos+accurate_rnd+full_chroma_int+bitexact,
+            scale=1440:1080:flags=gauss+accurate_rnd+full_chroma_int+bitexact,
             setdar=4/3"\
-    -c:v libx264 -crf 30 -preset ultrafast \
+    -c:v libx264 -crf 18 -preset ultrafast \
         -pix_fmt yuv420p \
         -color_range 1 -colorspace bt709 -color_trc bt709 -color_primaries bt709 \
         -movflags faststart \
