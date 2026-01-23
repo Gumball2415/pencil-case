@@ -9,12 +9,19 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.signal import resample_poly, resample
 
+VERSION = "0.3.0"
+
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
         description="Composite encoder-decoder",
-        epilog="version 0.2.0")
+        epilog=f"version {VERSION}")
     parser.add_argument("input_image", type=Path, help="input image")
     # output options
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Do not print or plot.")
     parser.add_argument(
         "-d",
         "--debug",
@@ -41,6 +48,11 @@ def parse_argv(argv):
         "--fsc_limit",
         action="store_true",
         help="Limit frequency content to colorburst.")
+    parser.add_argument(
+        "--plot_scanline",
+        type=int,
+        default=23+120,
+        help="Plot specified scanline. Default = 143")
     parser.add_argument(
         "-n",
         "--noise",
@@ -236,7 +248,6 @@ def configure_filters():
         ACTIVE_W_PX = 720,
         ACTIVE_H_PX = 480,
     )
-    print(r)
 
 def inc_phase_acc(phase_acc: int, increment: int):
     phase_acc = (phase_acc+increment) % (r.FULL_W_PX*2)
@@ -364,6 +375,7 @@ def encode_field(
         b: int,
         flip_field: bool = False,
         debug: bool = False,
+        quiet: bool = False,
         disable: str = None):
     """
     Encodes a field from a given YUV-encoded buffer. Returns an encoded raster buffer, and the phase state of the accumulator and the raster index.
@@ -397,7 +409,11 @@ def encode_field(
     :param debug:
         Print debug information.
 
-    :type debug: str
+    :type quiet: bool
+    :param quiet:
+        Prevent debug from plotting or printing.
+
+    :type disable: str
     :param disable:
         Disable "chroma" by setting saturation to 0, or "luma" by setting luma 
         to 50 IRE.
@@ -412,7 +428,7 @@ def encode_field(
         # input index
         y = (v - active_start) * 2 + int(not (field & 1) ^ flip_field)
         # line buffer in IRE units
-        if debug:
+        if debug and not quiet:
             print("f: {}\tv: {}\tb: {}\ty: {}\t ph: {}\t acc: {}".format(field, v, b, y, (phase_acc // r.HALF_W_PX), phase_acc))
 
         # vsync, field 1/3
@@ -441,8 +457,6 @@ def encode_field(
             else:
                 raster_buf[b], phase_acc = encode_line(raster_buf[b], phase_acc, None, disable)
 
-        # if debug:
-        #     plot_signal(raster_buf[b])
         b = inc_line(b)
         v += 1
 
@@ -569,6 +583,7 @@ def encode_image(
         fsc_limit: bool,
         flip_field: bool,
         debug: bool,
+        quiet: bool,
         disable: str,
         field:int,
         phase_acc:int,
@@ -602,6 +617,10 @@ def encode_image(
     :type debug: bool
     :param debug:
         Print/plot debugging information.
+
+    :type quiet: bool
+    :param quiet:
+        Prevent debug from plotting/printing.
 
     :type disable: str
     :param disable:
@@ -672,10 +691,10 @@ def encode_image(
     # insert active video inside sync
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b,
-        flip_field, debug, disable)
+        flip_field, debug, quiet, disable)
     raster_buf[0], phase_acc, field, b = encode_field(
         raster_buf[0], nd_img, field, phase_acc, b,
-        flip_field, debug, disable)
+        flip_field, debug, quiet, disable)
     
     return raster_buf, field, phase_acc, b
 
@@ -688,14 +707,17 @@ def main(argv=None):
     global r
     configure_filters()
 
+    if not args.quiet:
+        print(r)
+
     # phase_acc is used for colorburst phase, and also vsync serration phase
     phase_acc = 0
     b = 0
-    frame = 0
+    field = 0
 
     # TODO: per-field encoding
     # encode first frame
-    raster_buf, frame, phase_acc, b = encode_image(
+    raster_buf, field, phase_acc, b = encode_image(
         image,
         args.active_scale,
         args.prefilter_disable,
@@ -703,12 +725,13 @@ def main(argv=None):
         args.fsc_limit,
         args.flip_field,
         args.debug,
+        args.quiet,
         args.disable,
-        frame, phase_acc, b)
+        field, phase_acc, b)
 
     if args.frames-1 > 0:
         for _ in range(args.frames-1):
-            buffer, frame, phase_acc, b = encode_image(
+            buffer, field, phase_acc, b = encode_image(
                 image,
                 args.active_scale,
                 args.prefilter_disable,
@@ -716,29 +739,39 @@ def main(argv=None):
                 args.fsc_limit,
                 args.flip_field,
                 args.debug,
+                args.quiet,
                 args.disable,
-                frame, phase_acc, b)
+                field, phase_acc, b)
             raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
 
     # pregenerate sync for full frame
     sync_buf = np.zeros((r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
     sync_buf = generate_sync(sync_buf, phase_acc, b)
-    for frame in range(raster_buf.shape[0]):
-        raster_buf[frame] += sync_buf
+    for field in range(raster_buf.shape[0]):
+        raster_buf[field] += sync_buf
 
+    # apply noise
     rng = np.random.default_rng()
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
+
     if args.debug:
-        plot_2darr(raster_buf[0])
+        plot_2darr(args.input_image.stem, raster_buf[0], args.quiet)
+
+    raster_buf = raster_buf.flatten()
+
+    # repeat signal in case of field dropping
+    raster_buf = np.tile(raster_buf, 2)
+
+    if args.debug:
+        index = args.plot_scanline*r.FULL_W_PX
+        plot_signal(args.input_image.stem, raster_buf[index:index+r.FULL_W_PX], args.quiet)
+
     raster_buf -= r.SIG_SYNC
     raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
     raster_buf -= 0.5
     raster_buf = np.clip(raster_buf, -1, 1)
     raster_buf *= (2**31)
     raster_buf = np.int32(raster_buf)
-    raster_buf = raster_buf.flatten()
-    # repeat signal in case of field dropping
-    raster_buf = np.tile(raster_buf, 2)
 
     # TODO: use pyflac and encode signal in realtime
     import soundfile as sf
@@ -746,24 +779,31 @@ def main(argv=None):
     
     sf.write(f"{image_filename}_{srate_name}MHz_32_bit.cvbs", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
 
-def plot_2darr(arr):
-    plt.figure(tight_layout=True, figsize=(10,5.625))
+def plot_2darr(name, arr, quiet=False):
+    plt.figure(tight_layout=True, figsize=(20,13))
     plt.imshow(arr)
-    plt.savefig("docs/example.png", dpi=300)
-    plt.show()
+    plt.savefig(f"docs/{name}_raster.png", dpi=100)
+    if not quiet:
+        plt.show()
     plt.close()
 
-def plot_signal(arr):
-    # upsample to 10x
+def plot_signal(name, arr, quiet=False):
+    # upsample
+    factor = 10
     x_s = arr.shape[0]
     dws = 1
-    ups = dws*8
+    ups = dws*factor
     x_s2 = x_s * int(ups/dws)
     x = np.linspace(0, x_s, num=x_s, endpoint=False)
     x_new = np.linspace(0, x_s, num=x_s2, endpoint=False)
+
+    plt.axis('scaled')
+    plt.figure(tight_layout=True, figsize=(20,5))
     plt.plot(x, arr, ".", color="gray")
     plt.plot(x_new, resample_poly(arr, ups, dws))
-    plt.show()
+    plt.savefig(f"docs/{name}_scanline.png", dpi=100)
+    if not quiet:
+        plt.show()
     plt.close()
 
 if __name__=='__main__':
