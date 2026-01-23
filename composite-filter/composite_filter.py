@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.signal import resample_poly, resample
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -681,8 +681,12 @@ def encode_image(
         down = round(factor*r.F_SC/(r.FS/r.FULL_W_PX))
         gauss_wnd = 100
         nd_img = resample_poly(
-            resample_poly(nd_img,down ,r.FULL_W_PX, axis=1, window=("gaussian", gauss_wnd)),
-            r.FULL_W_PX, down, axis=1, window=("gaussian", gauss_wnd))
+                    resample_poly(
+                        nd_img,down ,r.FULL_W_PX, axis=1,
+                        window=("gaussian", gauss_wnd)
+                    ), r.FULL_W_PX, down, axis=1,
+                    window=("gaussian", gauss_wnd)
+                )
 
     # convert to IRE
     nd_img *= 100
@@ -744,27 +748,35 @@ def main(argv=None):
                 field, phase_acc, b)
             raster_buf = np.concatenate((raster_buf, buffer), dtype=np.float64)
 
-    # pregenerate sync for full frame
+    # generate sync for full frames
     sync_buf = np.zeros((r.FULL_H_PX, r.FULL_W_PX), dtype=np.float64)
     sync_buf = generate_sync(sync_buf, phase_acc, b)
     for field in range(raster_buf.shape[0]):
         raster_buf[field] += sync_buf
+
+
+    raster_buf = raster_buf.flatten()
+
+    # insert two blank frames to prevent cutoff
+    raster_buf = np.concatenate((sync_buf.flatten(), raster_buf))
+    raster_buf = np.concatenate((raster_buf, sync_buf.flatten()))
 
     # apply noise
     rng = np.random.default_rng(int.from_bytes(b"mango"))
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
 
     if args.debug:
-        plot_2darr(args.input_image.stem, raster_buf[0], args.quiet)
-
-    raster_buf = raster_buf.flatten()
-
-    # repeat signal in case of field dropping
-    raster_buf = np.tile(raster_buf, 2)
+        plot_2darr(args.input_image.stem,
+            raster_buf.reshape((args.frames+2), r.FULL_H_PX, r.FULL_W_PX)[1],
+            args.quiet)
 
     if args.debug:
         index = args.plot_scanline*r.FULL_W_PX
-        plot_signal(args.input_image.stem, raster_buf[index:index+r.FULL_W_PX], args.quiet)
+        plot_signal(args.input_image.stem,
+            raster_buf.reshape(
+                (args.frames+2),r.FULL_H_PX,
+                r.FULL_W_PX)[1][index:index+r.FULL_W_PX],
+            args.quiet)
 
     raster_buf -= r.SIG_SYNC
     raster_buf /= r.SIG_EXCUR - r.SIG_SYNC
@@ -777,7 +789,8 @@ def main(argv=None):
     import soundfile as sf
     srate_name = str(round(r.FS/1e6, 4))
     
-    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.cvbs", raster_buf, subtype="PCM_24", samplerate=96000, format="FLAC")
+    sf.write(f"{image_filename}_{srate_name}MHz_32_bit.cvbs", raster_buf,
+        subtype="PCM_24", samplerate=96000, format="FLAC")
 
 def plot_2darr(name, arr, quiet=False):
     plt.figure(tight_layout=True, figsize=(20,13))
