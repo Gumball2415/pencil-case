@@ -11,7 +11,9 @@ currently decoding back to RGB is not yet implemented.
 
 ## examples
 
-SMPTE color bars test pattern taken from [Wikimedia
+### SMPTE color bars test pattern
+
+taken from [Wikimedia
 Commons](https://commons.wikimedia.org/wiki/File:SMPTE_Color_Bars.svg).
 
 ![the SMPTE color bars test card before filtering](input/SMPTEColorBars.png)
@@ -22,7 +24,9 @@ Commons](https://commons.wikimedia.org/wiki/File:SMPTE_Color_Bars.svg).
 
 ![the SMPTE color bars test card after decoding](output/SMPTEColorBars_transcode_01.png)
 
-Philips Circle test pattern taken from [Wikimedia
+### Philips Circle test pattern
+
+taken from [Wikimedia
 Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
 
 ![the Philips circle test card before filtering](input/PhilipsCircle.png)
@@ -32,6 +36,20 @@ Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
 ![the Philips circle test card after encoding: the whole raster](docs/PhilipsCircle_raster.png)
 
 ![the Philips circle test card after decoding](output/PhilipsCircle_transcode_01.png)
+
+### cobalt teal: wind and rain
+
+used with permission.
+
+this example uses the noise parameter of `8.0`.
+
+![cobalt teal: wind and rain before filtering](input/TheWindAndRainCBTL.png)
+
+![cobalt teal: wind and rain after encoding: at scanline 143](docs/TheWindAndRainCBTL_scanline.png)
+
+![cobalt teal: wind and rain after encoding: the whole raster](docs/TheWindAndRainCBTL_raster.png)
+
+![cobalt teal: wind and rain after decoding](output/TheWindAndRainCBTL_transcode_01.png)
 
 ## requirements and libraries
 

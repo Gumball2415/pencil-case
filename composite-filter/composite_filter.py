@@ -751,7 +751,7 @@ def main(argv=None):
         raster_buf[field] += sync_buf
 
     # apply noise
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(int.from_bytes(b"mango"))
     raster_buf += rng.standard_normal(size=raster_buf.shape) * args.noise
 
     if args.debug:

@@ -12,6 +12,7 @@ endif
 
 in:=input
 out:=output
+docs:=docs
 
 program := composite_filter.py
 
@@ -20,8 +21,8 @@ program := composite_filter.py
 all: examples usage.txt
 
 clean:
-	${RM} -r docs/*
-	${RM} -r output/*
+	${RM} -r $(docs)/*
+	${RM} -r $(out)/*
 
 usage.txt:
 	${RM} -r $@
@@ -29,11 +30,26 @@ usage.txt:
 
 # uses ld-tools suite and vhs-decode from https://github.com/oyvindln/vhs-decode
 # they must be in path
-imgs := PhilipsCircle SMPTEColorBars
+imgs := PhilipsCircle SMPTEColorBars TheWindAndRainCBTL
 
 outputs := $(foreach img,$(imgs),$(out)/$(img)*.png)
 
-examples: $(outputs) usage.txt
+# simulate heavy noise
+$(out)/TheWindAndRainCBTL%.png: $(in)/TheWindAndRainCBTL%.png
+	${PY} ${program} "$<" -d -q -n 8
+	cvbs-decode --overwrite --frequency 13.5MHz -n -t 10 \
+		"$(basename  $<)_13.5MHz_32_bit.cvbs" \
+		"${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode"
+
+	ld-dropout-correct -o -t 10\
+		--input-json "${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode.tbc.json" \
+		--output-json "${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode.tbc.json" \
+		"${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode.tbc" - |\
+	ld-chroma-decoder -t 10 \
+		- \
+		--input-json "${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode.tbc.json" \
+		--decoder ntsc2d --ntsc-phase-comp -p y4m |\
+	ffmpeg -i - "${out}/$(basename $(notdir $<))_transcode_%02d.png"
 
 $(out)/%.png: $(in)/%.png
 	echo $<
@@ -45,3 +61,6 @@ $(out)/%.png: $(in)/%.png
 		"${out}/$(basename $(notdir $<))_13.5MHz_32_bit_decode.tbc" \
 		--decoder ntsc2d --ntsc-phase-comp -p y4m |\
 		ffmpeg -i - "${out}/$(basename $(notdir $<))_transcode_%02d.png"
+
+
+examples: $(outputs) usage.txt

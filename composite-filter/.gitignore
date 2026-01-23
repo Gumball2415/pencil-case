@@ -4,3 +4,5 @@
 *_ppucvbs_*
 *__pycache__
 .env
+*.cvbs
+*_decode*
