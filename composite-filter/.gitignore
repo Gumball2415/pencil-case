@@ -5,4 +5,7 @@
 *__pycache__
 .env
 *.cvbs
-*_decode*
+
+# TODO: mark these intermediate somehow
+*_decode.log
+*_decode.tbc.json

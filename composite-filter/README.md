@@ -22,12 +22,14 @@ Commons](https://commons.wikimedia.org/wiki/File:SMPTE_Color_Bars.svg).
 
 ![the SMPTE color bars test card after encoding: the whole raster](docs/SMPTEColorBars_raster.png)
 
-![the SMPTE color bars test card after decoding](output/SMPTEColorBars_transcode_01.png)
+![the SMPTE color bars test card after decoding](output/SMPTEColorBars_13.5MHz_16_bit_decode_01.png)
 
 ### Philips Circle test pattern
 
 taken from [Wikimedia
 Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
+
+this example uses the luma notch filter option.
 
 ![the Philips circle test card before filtering](input/PhilipsCircle.png)
 
@@ -35,7 +37,7 @@ Commons](https://commons.wikimedia.org/wiki/File:Pm5544_ntsc-2-.png).
 
 ![the Philips circle test card after encoding: the whole raster](docs/PhilipsCircle_raster.png)
 
-![the Philips circle test card after decoding](output/PhilipsCircle_transcode_01.png)
+![the Philips circle test card after decoding](output/PhilipsCircle_13.5MHz_16_bit_decode_01.png)
 
 ### cobalt teal: wind and rain
 
@@ -49,7 +51,7 @@ this example uses the noise parameter of `12.0`.
 
 ![cobalt teal: wind and rain after encoding: the whole raster](docs/TheWindAndRainCBTL_raster.png)
 
-![cobalt teal: wind and rain after decoding](output/TheWindAndRainCBTL_transcode_01.png)
+![cobalt teal: wind and rain after decoding](output/TheWindAndRainCBTL_13.5MHz_16_bit_decode_01.png)
 
 ## requirements and libraries
 

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.signal import resample_poly, resample
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -673,8 +673,9 @@ def encode_image(
     if notch_luma:
         # simple notch
         # this is to prevent crosstalking to chroma
-        bw = 1.3e6
-        b_luma, a_luma = signal.iirnotch(r.F_SC, r.F_SC/bw, fs=r.FS)
+        bw = 2e6
+        q = r.F_SC/bw
+        b_luma, a_luma = signal.iirnotch(r.F_SC, q, fs=r.FS)
         nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
 
     # resample luma to make sure there is no content beyond 2xfsc
