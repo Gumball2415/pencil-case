@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # composite filter
 # Copyright (C) 2023 Persune, MIT-0
 
@@ -656,6 +657,7 @@ def encode_image(
     if not prefilter_disable:
         from scipy import signal
         # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
+        # this is to prevent crosstalking to luma
         b_chroma, a_chroma = signal.iirdesign(
             1.3e6,
             3.6e6,
@@ -670,6 +672,7 @@ def encode_image(
     
     if notch_luma:
         # simple notch
+        # this is to prevent crosstalking to chroma
         bw = 1.3e6
         b_luma, a_luma = signal.iirnotch(r.F_SC, r.F_SC/bw, fs=r.FS)
         nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
