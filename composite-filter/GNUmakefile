@@ -32,6 +32,8 @@ usage.txt:
 # they must be in path
 imgs := PhilipsCircle SMPTEColorBars TheWindAndRainCBTL
 inputs :=	$(foreach img,$(imgs),$(in)/$(img).png)
+encode :=	$(foreach img,$(imgs),$(in)/$(img)_13.5MHz_16_bit.cvbs)
+decode :=	$(foreach img,$(imgs),$(out)/$(img)_13.5MHz_16_bit_decode.tbc)
 outputs :=	$(foreach img,$(imgs),$(out)/$(img)_13.5MHz_16_bit_decode_01.png)
 
 examples: $(outputs)
@@ -71,6 +73,6 @@ $(in)/TheWindAndRainCBTL_13.5MHz_16_bit.cvbs: $(in)/TheWindAndRainCBTL.png
 
 # luma notch filter
 $(in)/PhilipsCircle_13.5MHz_16_bit.cvbs: $(in)/PhilipsCircle.png
-	${PY} ${program} "$<" -d -q -nl
+	${PY} ${program} "$<" -d -q -nl --plot_scanline 167
 
 .PHONY: all clean examples
