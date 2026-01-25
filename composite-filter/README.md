@@ -5,8 +5,9 @@ yet another composite filter, in Python
 ![debug graph of encoding and decoding](docs/example.png)
 
 this filter encodes an input image to composite baseband
-according to BT.1700. outputs a FLAC-compressed 16-bit signal 
-sampled at 13.5MHz.
+according to BT.1700. outputs a FLAC-compressed 16-bit signal sampled at
+13.5MHz.
+
 currently decoding back to RGB is not yet implemented.
 
 ## examples
@@ -110,7 +111,8 @@ options:
 version 0.4.0
 ```
 
-additionally, [vhs-decode and ld-tools](https://github.com/oyvindln/vhs-decode) are used to generate decoded image examples.
+additionally, [vhs-decode and ld-tools](https://github.com/oyvindln/vhs-decode)
+are used to generate decoded image examples.
 
 ## license
 

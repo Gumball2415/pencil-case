@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-from scipy.signal import resample_poly, resample
+from scipy import signal
 
 VERSION = "0.4.1"
 
@@ -655,7 +655,6 @@ def encode_image(
 
     # prefilter, if permitted
     if not prefilter_disable:
-        from scipy import signal
         # bandlimiting chroma according to SMPTE 170M-2004, page 5, section 7.2
         # this is to prevent crosstalking to luma
         b_chroma, a_chroma = signal.iirdesign(
@@ -673,7 +672,7 @@ def encode_image(
     if notch_luma:
         # simple notch
         # this is to prevent crosstalking to chroma
-        bw = 2e6
+        bw = 3e6
         q = r.F_SC/bw
         b_luma, a_luma = signal.iirnotch(r.F_SC, q, fs=r.FS)
         nd_img[..., 0] = signal.filtfilt(b_luma, a_luma, nd_img[..., 0])
@@ -684,8 +683,8 @@ def encode_image(
         factor=2
         down = round(factor*r.F_SC/(r.FS/r.FULL_W_PX))
         gauss_wnd = 100
-        nd_img = resample_poly(
-                    resample_poly(
+        nd_img = signal.resample_poly(
+                    signal.resample_poly(
                         nd_img,down ,r.FULL_W_PX, axis=1,
                         window=("gaussian", gauss_wnd)
                     ), r.FULL_W_PX, down, axis=1,
@@ -776,7 +775,6 @@ def main(argv=None):
             args.quiet)
 
     if args.debug:
-        index = args.plot_scanline*r.FULL_W_PX
         plot_signal(args.input_image.stem,
             raster_buf.reshape(
                 (args.frames+2),r.FULL_H_PX,
@@ -818,7 +816,7 @@ def plot_signal(name, arr, quiet=False):
     plt.axis('scaled')
     plt.figure(tight_layout=True, figsize=(20,5))
     plt.plot(x, arr, ".", color="gray")
-    plt.plot(x_new, resample_poly(arr, ups, dws))
+    plt.plot(x_new, signal.resample_poly(arr, ups, dws))
     plt.savefig(f"docs/{name}_scanline.png", dpi=100)
     if not quiet:
         plt.show()
