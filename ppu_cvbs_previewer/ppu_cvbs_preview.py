@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.11.1"
+VERSION = "0.12.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -110,8 +110,8 @@ def parse_argv(argv):
         "--decoding_filter",
         choices=[
             "compl",
+            "1-line",
             "2-line",
-            "3-line",
         ], 
         default="compl",
         help = "Method for luma and chroma decoding.\
@@ -666,7 +666,7 @@ def yc_pal_delayline(
     # rotate chroma line to account for next line's phase shift
     prev_line = np.roll(cvbs_ppu, -4)
 
-    # notch filter the luma
+    # filter luma
     if luma_kernel is None:
         y_line, _ = yc_iir(cvbs_ppu, b_luma, a_luma)
     else:
@@ -770,12 +770,12 @@ def decode_scanline(
 
     # separate luma and chroma
     match decoding_filter:
-        case "2-line":
+        case "1-line":
             if ppu_type == "2C07":
                 YUV_line[:, 0], u_line, v_line, prev_line = yc_pal_delayline(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
             else:
                 YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
-        case "3-line":
+        case "2-line":
             YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, ppu_type == "2C07", scanline == 0)
         case "compl":
             if luma_kernel is not None:
@@ -801,12 +801,12 @@ def decode_scanline(
     # with this setting, hues match this image: https://forums.nesdev.org/viewtopic.php?p=133638#p133638
     if ppu_type == "2C07":
         # chroma is delayed by one line, flip parity
-        if decoding_filter == "3-line":
+        if decoding_filter == "2-line":
             alternate_line = not alternate_line
 
         # PAL delay line adjusts the subcarrier phase for us
         # otherwise, nudge reference from 180 degrees to 135 degrees
-        if decoding_filter != "2-line":
+        if decoding_filter != "1-line":
             cburst_phase += np.pi/4 * (1 if alternate_line else -1)
 
     U_decode = np.sin((2 * np.pi / 12 * t) - cburst_phase) * 2

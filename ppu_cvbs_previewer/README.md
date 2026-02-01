@@ -23,7 +23,7 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-b BACKDROP] [-pal PALETTE]
                            [-ppu {2C02,2C07}] [-phd PHASE_DISTORTION]
-                           [-x {chroma,luma}] [-filt {compl,2-line,3-line}]
+                           [-x {chroma,luma}] [-filt {compl,1-line,1-line}]
                            [-ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
@@ -64,7 +64,7 @@ options:
   -x {chroma,luma}, --disable {chroma,luma}
                         Disables chroma by setting UV to 0. Disables luma by
                         setting Y to 0.5.
-  -filt {compl,2-line,3-line}, --decoding_filter {compl,2-line,3-line}
+  -filt {compl,1-line,1-line}, --decoding_filter {compl,1-line,1-line}
                         Method for luma and chroma decoding. Default =
                         "compl".
   -ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...], --filter_type {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]
@@ -87,7 +87,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.11.1
+version 0.12.0
 ```
 
 ## Requirements
@@ -117,7 +117,7 @@ additionally, FFmpeg is required for animated .mp4 previews
 ### 3-phase dot crawl
 
 ```sh
-python3 ppu_cvbs_preview.py -raw -filt 2-line -frames 3 -noskipdot input/addie.bin
+python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot input/addie.bin
 ```
 
 ![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
@@ -137,7 +137,7 @@ python3 ppu_cvbs_preview.py -frames 2 input/240pee.png
 ### Comb filter tests for PAL and NTSC
 
 ```sh
-python3 ppu_cvbs_preview.py -ppu 2C07 -filt 2-line -b 00 input/240pee_2.png
+python3 ppu_cvbs_preview.py -ppu 2C07 -filt 1-line -b 00 input/240pee_2.png
 ```
 
 ![Comb filter test for PAL](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_PAL.png)
@@ -145,7 +145,7 @@ python3 ppu_cvbs_preview.py -ppu 2C07 -filt 2-line -b 00 input/240pee_2.png
 - no animation because PAL has static dot crawl
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_2.png
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_2.png
 ```
 
 ![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.png)
@@ -155,7 +155,7 @@ python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_2.png
 ### Sharpness tests for comb and box filter
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 2-line -frames 2 -b 00 input/240pee_3.png
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_3.png
 ```
 
 ![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.png)
@@ -181,20 +181,20 @@ python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 input/dit
 - [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
 
 ```sh
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 input/dither.png
+```
+
+![Crosstalk test: 1-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_1line.png)
+
+- [Crosstalk test: 1-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_1line.mp4)
+
+```sh
 python3 ppu_cvbs_preview.py -filt 2-line -frames 2 input/dither.png
 ```
 
 ![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_2line.png)
 
 - [Crosstalk test: 2-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
-
-```sh
-python3 ppu_cvbs_preview.py -filt 3-line -frames 2 input/dither.png
-```
-
-![Crosstalk test: 3-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_3line.png)
-
-- [Crosstalk test: 3-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_3line.mp4)
 
 ## [License](../LICENSE_MIT-0.txt)
 
