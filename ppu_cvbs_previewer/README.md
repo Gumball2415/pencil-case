@@ -10,7 +10,7 @@ it was difficult screenshotting Mesen all the time so i made this instead.
 
 - if you require emphasis effects, a raw `.bin` PPU buffer is the only way to
   get a reliable image, as the .png quantizer can only consider non-emphasis
-  colors.
+  colors. (how can it tell emphasis colors from non-emphasis?)
 - the script outputs the next `color_clock_phase` for the succeeding frame.
   - this is meant to facilitate external conversion scripts such as encoding a
     video frame-by-frame, where the phase output will feed into the next frame's
@@ -19,11 +19,11 @@ it was difficult screenshotting Mesen all the time so i made this instead.
   - this means skipped dot rendering on odd frames, meaning that scanline 0 may
     be visibly truncated by one pixel.
 
-```sh
+```usage.txt
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-b BACKDROP] [-pal PALETTE]
                            [-ppu {2C02,2C07}] [-phd PHASE_DISTORTION]
-                           [-x {chroma,luma}] [-filt {compl,1-line,1-line}]
+                           [-x {chroma,luma}] [-filt {compl,1-line,2-line}]
                            [-ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]]
                            [-full] [-frames FRAMES] [-avg] [-diff]
                            [-noskipdot]
@@ -64,7 +64,7 @@ options:
   -x {chroma,luma}, --disable {chroma,luma}
                         Disables chroma by setting UV to 0. Disables luma by
                         setting Y to 0.5.
-  -filt {compl,1-line,1-line}, --decoding_filter {compl,1-line,1-line}
+  -filt {compl,1-line,2-line}, --decoding_filter {compl,1-line,2-line}
                         Method for luma and chroma decoding. Default =
                         "compl".
   -ftype {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...], --filter_type {iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} [{iir,lanczos,lanczos_notch,gauss,box,kaiser,leastsquares,none} ...]
@@ -87,7 +87,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.12.0
+version 0.12.1
 ```
 
 ## Requirements
@@ -100,11 +100,11 @@ For python:
 
 - this script requires `pipreqs` to maintain `requirements.txt`.
 
-```python
-matplotlib==3.10.7
-numpy==2.3.5
-Pillow==12.0.0
-scipy==1.16.3
+```requirements.txt
+matplotlib==3.10.8
+numpy==2.4.2
+Pillow==12.1.0
+scipy==1.17.0
 ```
 
 additionally, FFmpeg is required for animated .mp4 previews
@@ -199,6 +199,6 @@ python3 ppu_cvbs_preview.py -filt 2-line -frames 2 input/dither.png
 ## [License](../LICENSE_MIT-0.txt)
 
 This implementation is licensed under MIT-0.\
-Copyright 2025 Persune.
+Copyright 2026 Persune.
 
 Images under fair use and are for filter demonstration purposes only. All rights reserved to their respective copyright owners.
