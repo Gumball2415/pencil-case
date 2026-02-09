@@ -21,7 +21,7 @@ import argparse
 import sys
 import numpy as np
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 # signal LUTs
 # voltage highs and lows
@@ -63,6 +63,7 @@ SYNC_INDEX = 1 << 9
 BLANK_INDEX = 2 << 9
 COLORBURST_INDEX = 3 << 9
 
+# constants for reference
 SYNC_LEVEL = signal_table_composite[5, 0, 0]
 BLANK_LEVEL = signal_table_composite[5, 1, 0]
 
@@ -117,11 +118,16 @@ def encode_composite_sample(
 
     if pixel >= SYNC_INDEX:
         if pixel == SYNC_INDEX:
-            return signal_table_composite[5, 0, 0]
+            return SYNC_LEVEL
         elif pixel == BLANK_INDEX:
-            return signal_table_composite[5, 1, 0]
+            return BLANK_LEVEL
         elif pixel == COLORBURST_INDEX:
-            return signal_table_composite[4, int(in_color_phase(cburst_phase, wave_phase, alternate_line)), 0]
+            return signal_table_composite[
+                4,
+                int(not in_color_phase(
+                    cburst_phase, wave_phase, alternate_line)),
+                0
+            ]
         else:
             sys.exit(f"invalid PPU pixel. got {pixel:04X}")
 
@@ -143,25 +149,23 @@ def encode_composite_sample(
         luma = 0x1
 
     # generate sinusoidal waveforms with matching p-p amplitudes
-    if (sinusoidal_peak_generation):
-        # rows $x0 and $xD
-        if (hue == 0x00):
-            return signal_table_composite[luma, 0, attenuate]
-        
-        if (hue >= 0x0D):
-            return signal_table_composite[luma, 1, attenuate]
-
+    if (sinusoidal_peak_generation and hue > 0x00 and hue < 0x0D):
         wave_amp = (signal_table_composite[luma, 0, attenuate] - signal_table_composite[luma, 1, attenuate]) / 2
         wave_dc = (signal_table_composite[luma, 0, attenuate] + signal_table_composite[luma, 1, attenuate]) / 2
 
         return wave_dc + (np.sin((2 * np.pi * (hue+0.5)/12) + (2 * np.pi / 12 * (wave_phase))) * wave_amp)
 
-    # 0 = waveform high; 1 = waveform low
-    n_wave_level = int(not in_color_phase(hue, wave_phase, alternate_line))
+    n_wave_level = 0
 
     # rows $x0 and $xD
-    if (hue == 0x0): n_wave_level = 0
-    elif (hue >= 0xD): n_wave_level = 1
+    if (hue == 0x0):
+        n_wave_level = 0
+    elif (hue >= 0xD):
+        n_wave_level = 1
+    # 0 = waveform high; 1 = waveform low
+    else:
+        n_wave_level = int(
+            not in_color_phase(hue, wave_phase, alternate_line))
 
     return signal_table_composite[luma, n_wave_level, attenuate]
 

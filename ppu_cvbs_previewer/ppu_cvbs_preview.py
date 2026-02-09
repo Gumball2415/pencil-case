@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # NES PPU composite video filter for input images
-# Copyright (C) 2025 Persune
+# Copyright (C) 2026 Persune
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.12.0"
+VERSION = "0.12.1"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -65,8 +65,8 @@ def parse_argv(argv):
         "--backdrop",
         type=str,
         default="0F",
-        help="Backdrop color index in hexadecimal (00-3F), used for NTSC active\
-            video border. Default= \"0F\"")
+        help="Backdrop color index in hexadecimal (00-3F), used for NTSC \
+            active video border. Default= \"0F\"")
     parser.add_argument(
         "-pal",
         "--palette",
@@ -90,8 +90,8 @@ def parse_argv(argv):
         "-phd",
         "--phase_distortion",
         type = np.float64,
-        help = "The amount of voltage-dependent impedance for RC lowpass, where\
-            RC = \"phd * (level/composite_white) * 1e-8\". See\
+        help = "The amount of voltage-dependent impedance for RC lowpass,\
+            where RC = \"phd * (level/composite_white) * 1e-8\". See\
             https://www.nesdev.org/wiki/NTSC_video#Simulating_differential_phase_distortion\
             for more details.\
             Default = 3",
@@ -191,7 +191,8 @@ RGB_to_YUV = np.array([
 # open raw ppu pixels and parse as ndarray
 def parse_raw_ppu_px(file: str):
     with open(file, mode="rb") as input:
-        array = np.array(np.frombuffer(input.read(), dtype=np.uint16), dtype=int)
+        array = np.array(
+            np.frombuffer(input.read(), dtype=np.uint16), dtype=int)
         if array.size != 240*256:
             print_err_quit("raw ppu pixel array is not 256x240.")
         return np.reshape(array, (240, 256))
@@ -205,26 +206,35 @@ def parse_indexed_png(file: str, palfile: str):
         if im.mode != "P" or palfile is not None:
             # try to convert with input palette
             if palfile is None:
-                print_err_quit("image is not indexed and palette is not provided.")
+                print_err_quit(
+                    "image is not indexed and palette is not provided.")
 
             # convert .pal to an indexed Image object
             with open(palfile, mode="rb") as master_pal:
-                palette_buf = np.transpose(np.frombuffer(master_pal.read(), dtype=np.uint8))
+                palette_buf = np.transpose(
+                    np.frombuffer(master_pal.read(), dtype=np.uint8))
                 
-                # ideally the palette would be 512 entries (1536 bytes) but .png don't support shit like that
+                # ideally the palette would be 512 entries (1536 bytes)
+                # but .png only supports up to 256.
                 # so in practice the palette is 64 entries (192 bytes)
                 if len(palette_buf) != 192:
-                    print_err_quit(f"palette size is not 192: got {len(palette_buf)} bytes.")
+                    print_err_quit(
+                        f"palette size is not 192: got \
+                            {len(palette_buf)} bytes.")
                 
-                nespal = ImagePalette.ImagePalette(mode="RGB", palette=list(palette_buf))
+                nespal = ImagePalette.ImagePalette(
+                    mode="RGB", palette=list(palette_buf))
                 imgpal = Image.new('P',(0,0))
                 imgpal.putpalette(nespal)
                 # quantize .png to become indexed
-                im = im.convert(mode="RGB").quantize(colors=256, palette=imgpal, dither=Image.Dither.NONE)
+                im = im.convert(mode="RGB").quantize(
+                    colors=256, palette=imgpal, dither=Image.Dither.NONE)
         else:
             # check if index is correct
             if len(im.getpalette()) != 192:
-                print_err_quit(f"image's index is not expected length of 192: got {len(im.getpalette())} bytes.")
+                print_err_quit(
+                    f"image's index is not expected length of 192: got \
+                        {len(im.getpalette())} bytes.")
 
         # at this point, image should be indexed .png
         # return image with raw indices of $00-$3F
@@ -248,19 +258,23 @@ def save_image(
     with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
     # scale image
         if (full_resolution or debug):
-            imageout = imageout.resize((imageout.size[0], int(imageout.size[1]*8)), Image.Resampling.NEAREST)
+            imageout = imageout.resize(
+                (imageout.size[0], int(imageout.size[1]*8)), 
+                Image.Resampling.NEAREST)
         else:
-            imageout = imageout.resize((out_width, imageout.size[1]), resample=Image.Resampling.LANCZOS)
-            imageout = imageout.resize((imageout.size[0], out_height), Image.Resampling.NEAREST)
+            imageout = imageout.resize(
+                (out_width, imageout.size[1]), 
+                resample=Image.Resampling.LANCZOS)
+            imageout = imageout.resize(
+                (imageout.size[0], out_height), Image.Resampling.NEAREST)
         imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
 
 
 
-### filtering and raster configuration
-
+# filtering and raster configuration
 @dataclass
 class RasterTimings:
-    """scanline timing constants"""
+    # scanline timing constants
     HSYNC: int
     B_PORCH_A: int
     CBURST: int
@@ -295,24 +309,32 @@ class RasterTimings:
     SAMPLES_PER_SCANLINE: int = field(init=False)
 
     def __post_init__(self):
-        self.BEFORE_ACTIVE = self.HSYNC + self.B_PORCH_A + self.CBURST + self.B_PORCH_B + self.PULSE + self.L_BORDER
+        self.BEFORE_ACTIVE = self.HSYNC + self.B_PORCH_A + self.CBURST\
+            + self.B_PORCH_B + self.PULSE + self.L_BORDER
         self.AFTER_ACTIVE = self.BEFORE_ACTIVE + self.ACTIVE
-        self.BEFORE_VID = self.HSYNC + self.B_PORCH_A + self.CBURST + self.B_PORCH_B
-        self.AFTER_VID = self.BEFORE_VID + self.PULSE + self.L_BORDER + self.ACTIVE + self.R_BORDER
+        self.BEFORE_VID = self.HSYNC + self.B_PORCH_A + self.CBURST\
+            + self.B_PORCH_B
+        self.AFTER_VID = self.BEFORE_VID + self.PULSE + self.L_BORDER\
+            + self.ACTIVE + self.R_BORDER
 
         self.BEFORE_CBURST = self.HSYNC + self.B_PORCH_A
         self.AFTER_CBURST = self.BEFORE_CBURST + self.CBURST
 
-        self.PULSE_INDEX = self.HSYNC + self.B_PORCH_A + self.CBURST + self.B_PORCH_B
+        self.PULSE_INDEX = self.HSYNC + self.B_PORCH_A + self.CBURST\
+            + self.B_PORCH_B
 
-        self.PIXELS_PER_SCANLINE = self.HSYNC + self.B_PORCH_A + self.CBURST + self.B_PORCH_B + self.PULSE + self.L_BORDER + self.ACTIVE + self.R_BORDER + self.F_PORCH
+        self.PIXELS_PER_SCANLINE = self.HSYNC + self.B_PORCH_A + self.CBURST\
+            + self.B_PORCH_B + self.PULSE + self.L_BORDER + self.ACTIVE\
+            + self.R_BORDER + self.F_PORCH
         self.SAMPLES_PER_SCANLINE = self.PIXELS_PER_SCANLINE * self.PIXEL_SIZE
         # scanline shift to account for phase
         self.NEXT_SHIFT = (self.SAMPLES_PER_SCANLINE) % 12
 
-# phase shift the composite using a simple lowpass
-# for differential phase distortion
-# https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+"""
+phase shift the composite using a simple lowpass
+for differential phase distortion
+https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+"""
 def RC_lowpass(signal, amount, dt):
     v_out = np.zeros(signal.shape, np.float64)
     v_prev = signal[0]
@@ -320,10 +342,13 @@ def RC_lowpass(signal, amount, dt):
         # impedance changes depending on DAC tap
         # we approximate this by using the raw signal's voltage
         # https://forums.nesdev.org/viewtopic.php?p=287241#p287241
-        # the phase shifts negative on higher levels according to https://forums.nesdev.org/viewtopic.php?p=186297#p186297
+        #
+        # the phase shifts negative on higher levels according to 
+        # https://forums.nesdev.org/viewtopic.php?p=186297#p186297
         v_prev_norm = signal[i] / ppu.WHITE_LEVEL
 
-        # RC constant tuned so that 0x and 3x colors have around 14 degree delta when phd = 3
+        # RC constant tuned so that 0x and 3x colors have around 14 degree
+        # delta when phd = 3
         # https://forums.nesdev.org/viewtopic.php?p=186297#p186297
         alpha = dt / (v_prev_norm * amount * 1e-8 + dt)
         v_prev = alpha * signal[i] + (1-alpha) * v_prev
@@ -344,7 +369,6 @@ filter_config = []
 def configure_filters(
         ppu_type: str,
         filter_type,
-        decoding_filter: str,
         backdrop: int,
         plot_filters: bool = False
     ):
@@ -367,7 +391,7 @@ def configure_filters(
             ACTIVE = 256,
             R_BORDER = 9,
             F_PORCH = 9,
-            CBURST_PHASE = (7-6)%12,
+            CBURST_PHASE = 7,
             PIXEL_SIZE = 8,
             BACKDROP = ppu.BLANK_INDEX,
             SCANLINES = 312
@@ -383,7 +407,7 @@ def configure_filters(
             ACTIVE = 256,
             R_BORDER = 11,
             F_PORCH = 9,
-            CBURST_PHASE = (8-6)%12,
+            CBURST_PHASE = 8,
             PIXEL_SIZE = 8,
             BACKDROP = backdrop,
             SCANLINES = 262
@@ -434,7 +458,9 @@ def configure_filters(
     band_hi_cutoff = PPU_Cb+(bandwidth*PPU_Fs/2.8)
 
     if PPU_Cb/PPU_Fs <= bandwidth:
-        print_err_quit(f"tap size {kernel_taps} too small! bandwidth {bandwidth} larger than cutoff {PPU_Cb/PPU_Fs}")
+        print_err_quit(
+            f"tap size {kernel_taps} too small! bandwidth {bandwidth}\
+            larger than cutoff {PPU_Cb/PPU_Fs}")
 
     # sinc kernel
     # Equation 16-1
@@ -555,10 +581,19 @@ def configure_filters(
         plt.xlabel('Frequency [Hz]')
         plt.title('Frequency response')
         plt.grid(which='both', linestyle='-', color='grey')
-        plt.xticks([PPU_Fs/32, PPU_Fs/16, PPU_Cb, PPU_Fs/2], ["px/2", "px","cb", "nyquist"])
+        plt.xticks(
+            [PPU_Fs/32, PPU_Fs/16, PPU_Cb, PPU_Fs/2],
+            ["px/2", "px","cb", "nyquist"])
         plt.show()
 
-    return (luma_kernel, chroma_kernel, b_luma, a_luma, b_chroma, a_chroma, Fs_dt, r)
+    return (
+        luma_kernel,
+        chroma_kernel,
+        b_luma, a_luma,
+        b_chroma, a_chroma,
+        Fs_dt,
+        r
+    )
 
 # filters one line of raw ppu pixels
 # returns raw voltage and next phase
@@ -605,13 +640,14 @@ def encode_scanline(
 
         for sample in range(r.PIXEL_SIZE):
             # todo: concurrency
-            cvbs_ppu[px_index*r.PIXEL_SIZE + sample] = ppu.encode_composite_sample(
-                raw_ppu[pixel],
-                scanline_phase,
-                False,
-                r.CBURST_PHASE,
-                alternate_line
-            )
+            cvbs_ppu[px_index*r.PIXEL_SIZE + sample] =\
+                ppu.encode_composite_sample(
+                    raw_ppu[pixel],
+                    scanline_phase,
+                    False,
+                    r.CBURST_PHASE,
+                    alternate_line
+                )
             scanline_phase = (scanline_phase + 1) % 12
 
         # due to skipped dot, the raw PPU index
@@ -772,11 +808,32 @@ def decode_scanline(
     match decoding_filter:
         case "1-line":
             if ppu_type == "2C07":
-                YUV_line[:, 0], u_line, v_line, prev_line = yc_pal_delayline(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
+                YUV_line[:, 0], u_line, v_line, prev_line = yc_pal_delayline(
+                        cvbs_ppu,
+                        prev_line,
+                        r,
+                        b_luma, a_luma,
+                        luma_kernel,
+                        scanline == 0
+                    )
             else:
-                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, scanline == 0)
+                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(
+                    cvbs_ppu,
+                    prev_line,
+                    r,
+                    b_luma, a_luma,
+                    luma_kernel,
+                    scanline == 0
+                )
         case "2-line":
-            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(cvbs_ppu, prev_line, r, b_luma, a_luma, luma_kernel, ppu_type == "2C07", scanline == 0)
+            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(
+                cvbs_ppu,
+                prev_line,
+                r,
+                b_luma, a_luma,
+                luma_kernel,
+                ppu_type == "2C07",
+            scanline == 0)
         case "compl":
             if luma_kernel is not None:
                 YUV_line[:, 0], u_line = yc_fir(cvbs_ppu, luma_kernel)
@@ -784,13 +841,16 @@ def decode_scanline(
                 YUV_line[:, 0], u_line = yc_iir(cvbs_ppu, b_luma, a_luma)
             v_line = u_line
         case _:
-            print_err_quit(f"unknown decoding filter option: {decoding_filter}")
+            print_err_quit(
+                f"unknown decoding filter option: {decoding_filter}")
 
     DISABLE_CHROMA = False
 
     # get UV decoding phases
     # correct for weird 90 degree offset
-    cburst_phase = QAM_phase(u_line[(r.BEFORE_CBURST+3)*r.PIXEL_SIZE:(r.AFTER_CBURST-3)*r.PIXEL_SIZE]) - np.pi/2
+    cburst_phase = QAM_phase(
+        u_line[(r.BEFORE_CBURST+3)*r.PIXEL_SIZE:(r.AFTER_CBURST-3)*r.PIXEL_SIZE]
+    ) - np.pi/2
 
     # generate UV decoding sines
     cburst_shift = (-r.BEFORE_CBURST+3 + r.NEXT_SHIFT) % 12
@@ -798,7 +858,8 @@ def decode_scanline(
     t = np.arange(12, dtype=np.float64) + cburst_shift
 
     # adjust with colorburst = 135 degrees
-    # with this setting, hues match this image: https://forums.nesdev.org/viewtopic.php?p=133638#p133638
+    # with this setting, hues match this image:
+    # https://forums.nesdev.org/viewtopic.php?p=133638#p133638
     if ppu_type == "2C07":
         # chroma is delayed by one line, flip parity
         if decoding_filter == "2-line":
@@ -852,7 +913,14 @@ def encode_frame(raw_ppu,
         disable_yc = None,
     ):
 
-    (luma_kernel, chroma_kernel, b_luma, a_luma, b_chroma, a_chroma, Fs_dt, r) = filter_config
+    (
+        luma_kernel,
+        chroma_kernel,
+        b_luma, a_luma,
+        b_chroma, a_chroma,
+        Fs_dt,
+        r
+    ) = filter_config
 
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
 
@@ -921,7 +989,9 @@ def encode_frame(raw_ppu,
         out[line_index] = decoded_scanline
 
     # account for the rest of the scanlines
-    next_phase = ((next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE) % 12
+    next_phase = (
+        (next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE
+    ) % 12
 
     # crop image to active video
     if not (full_resolution or debug):
@@ -939,7 +1009,8 @@ def encode_frame(raw_ppu,
 
     # convert to RGB
     if not debug:
-        out = np.einsum('ij,klj->kli', np.linalg.inv(RGB_to_YUV), out, dtype=np.float64)
+        out = np.einsum(
+            'ij,klj->kli', np.linalg.inv(RGB_to_YUV), out, dtype=np.float64)
     # fit RGB within range of 0.0-1.0
     np.clip(out, 0, 1, out=out)
 
@@ -976,7 +1047,6 @@ def main(argv=None):
     filter_config = configure_filters(
         args.ppu,
         args.filter_type,
-        args.decoding_filter,
         int(args.backdrop, 16),
         args.plot_filters
     )
@@ -999,7 +1069,14 @@ def main(argv=None):
 
         if not (avg or args.difference):
             print(phase)
-            save_image(args.ppu, args.input, out, prev, args.full_resolution, args.debug)
+            save_image(
+                args.ppu,
+                args.input,
+                out,
+                prev,
+                args.full_resolution,
+                args.debug
+            )
 
     if avg or args.difference:
         images, phases = zip(*frames)
@@ -1010,7 +1087,14 @@ def main(argv=None):
         elif args.difference:
             out = images[0] - images[1]
             out = np.absolute(out)
-        save_image(args.ppu, args.input, out, phases, args.full_resolution, args.debug)
+        save_image(
+            args.ppu,
+            args.input,
+            out,
+            phases,
+            args.full_resolution,
+            args.debug
+        )
 
 if __name__=='__main__':
     main(sys.argv)
