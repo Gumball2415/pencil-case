@@ -26,7 +26,7 @@ ffmpeg -hwaccel auto -i "$real" -an -vf \
 
 
 ld-chroma-decoder --input-json "${fullfilepath}_encode.tbc.json"\
-    --decoder ntsc3d -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
+    --decoder ntsc2d -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
     | ffmpeg -y -hwaccel auto -i - -i "$real" \
         -c:a copy \
         -c:v ffv1 \
@@ -53,7 +53,8 @@ ffmpeg -y -hwaccel auto -i "${fullfilepath}_encode.mkv" \
             scale=0:ih*2:flags=neighbor+accurate_rnd+full_chroma_int+bitexact,
             rgbashift=rv=1:gv=1:bv=1:av=1:edge=1[field2];
         [field1][field2]framepack=frameseq,
-            scale=1440:1080:flags=gauss+accurate_rnd+full_chroma_int+bitexact,
+            scale=0:ih*2:flags=neighbor+accurate_rnd+full_chroma_int+bitexact,
+            scale=iw*2:ih*2:flags=gauss+accurate_rnd+full_chroma_int+bitexact,
             setdar=4/3"\
     -c:v libx264 -crf 18 -preset ultrafast \
         -pix_fmt yuv420p \
