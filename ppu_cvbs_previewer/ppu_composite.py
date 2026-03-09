@@ -83,8 +83,8 @@ def parse_argv(argv):
 
     return parser.parse_args(argv[1:])
 
-# 2C07 phase alternation
 def pal_phase(hue: int, alternate_line=False):
+    """2C07 phase alternation"""
     ALTERNATE_PHASE = {
         1: 4,
         2: 3,
@@ -104,17 +104,17 @@ def pal_phase(hue: int, alternate_line=False):
     else:
         return hue
 
-# waveform generation
 def in_color_phase(hue: int, phase: int, alternate_line=False):
+    """checks if current sample is high or low in a given color wave"""
     return ((pal_phase(hue, alternate_line) + phase) % 12) < 6
 
-# encodes a composite sample from a given PPU pixel and a given phase
 def encode_composite_sample(
     pixel: int,
     wave_phase: int,
     sinusoidal_peak_generation: bool,
     cburst_phase: int,
     alternate_line=False):
+    """encodes a composite sample from a given PPU pixel and a given phase"""
 
     if pixel >= SYNC_INDEX:
         if pixel == SYNC_INDEX:

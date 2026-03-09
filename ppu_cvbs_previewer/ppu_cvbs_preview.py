@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.12.1"
+VERSION = "0.12.2"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -134,6 +134,7 @@ def parse_argv(argv):
         help = "One filter for complementary luma-chroma filtering and\
             another filter for lowpassing quadrature demodulated chroma.\
             If one option is specified, it will be used for both filters.\
+            Only up to two filters are recognized.\
             Default =\"iir\".")
     parser.add_argument(
         "-full",
@@ -165,10 +166,12 @@ def parse_argv(argv):
         action="store_true",
         help="Turns off skipped dot rendering, generating three chroma dot\
             phases. Equivalent to rendering on 2C02s")
-
     return parser.parse_args(argv[1:])
 
 def print_err_quit(message: str):
+    """
+    Prints an error message and quits.
+    """
     print("Error: "+message, file=sys.stderr)
     sys.exit()
 
@@ -188,8 +191,10 @@ RGB_to_YUV = np.array([
 
 ### image input/output
 
-# open raw ppu pixels and parse as ndarray
 def parse_raw_ppu_px(file: str):
+    """
+    open raw ppu pixels and parse as ndarray
+    """
     with open(file, mode="rb") as input:
         array = np.array(
             np.frombuffer(input.read(), dtype=np.uint16), dtype=int)
@@ -197,7 +202,6 @@ def parse_raw_ppu_px(file: str):
             print_err_quit("raw ppu pixel array is not 256x240.")
         return np.reshape(array, (240, 256))
 
-# open image
 def parse_indexed_png(file: str, palfile: str):
     with Image.open(file) as im:
         if im.size != (256, 240):
@@ -240,7 +244,6 @@ def parse_indexed_png(file: str, palfile: str):
         # return image with raw indices of $00-$3F
         return np.array(im, dtype=int)
 
-# save image
 def save_image(
         ppu_type: str,
         input: str,
@@ -274,6 +277,9 @@ def save_image(
 # filtering and raster configuration
 @dataclass
 class RasterTimings:
+    """
+    Scanline and raster timing constants. Used for generation logic.
+    """
     # scanline timing constants
     HSYNC: int
     B_PORCH_A: int
@@ -330,19 +336,19 @@ class RasterTimings:
         # scanline shift to account for phase
         self.NEXT_SHIFT = (self.SAMPLES_PER_SCANLINE) % 12
 
-"""
-phase shift the composite using a simple lowpass
-for differential phase distortion
-https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-"""
 def RC_lowpass(signal, amount, dt):
+    """
+    phase shift the composite using a simple lowpass
+    for differential phase distortion.
+
+    https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+    """
     v_out = np.zeros(signal.shape, np.float64)
     v_prev = signal[0]
     for i in range(len(signal)):
         # impedance changes depending on DAC tap
         # we approximate this by using the raw signal's voltage
         # https://forums.nesdev.org/viewtopic.php?p=287241#p287241
-        #
         # the phase shifts negative on higher levels according to 
         # https://forums.nesdev.org/viewtopic.php?p=186297#p186297
         v_prev_norm = signal[i] / ppu.WHITE_LEVEL
@@ -355,73 +361,134 @@ def RC_lowpass(signal, amount, dt):
         v_out[i] = v_prev
     return v_out
 
-def QAM_phase(signal):
+def QAM_phase(signal: np.ndarray):
+    """
+    Gets the phase of a given sinusoid in radians. The given signal must be a
+    length of one period.
+    """
     buf_size = len(signal)
     t = np.arange(12)
-    U = np.tile(np.sin(2 * np.pi / 12 * t)*2, buf_size//12)
-    V = np.tile(np.cos(2 * np.pi / 12 * t)*2, buf_size//12)
-    signal_U = np.average(signal * U)
-    signal_V = np.average(signal * V)
+    u = np.tile(np.sin(2 * np.pi / 12 * t)*2, buf_size//12)
+    v = np.tile(np.cos(2 * np.pi / 12 * t)*2, buf_size//12)
+    signal_U = np.average(signal * u)
+    signal_V = np.average(signal * v)
     return np.atan2(signal_U, signal_V)
-
-filter_config = []
 
 def configure_filters(
         ppu_type: str,
-        filter_type,
+        filter_type: list[str],
         backdrop: int,
         plot_filters: bool = False
     ):
-    
-    X_main = 26601712.5 if ppu_type == "2C07" else (236.25e6 / 11)
+    """
+    Configures the RasterTimings object for encoding and filter parameters
+    for decoding.
+
+    Depending on the PPU type, the RasterTimings will be initialized with the 
+    proper raster timing constants and optionally the backdrop color.
+
+    Depending on the filter type, an FIR kernel or IIR filter 
+    numerator/denominator will be generated for complementary luma-chroma 
+    separation and QAM demodulation lowpassing. Otherwise they are initialized with `None`.
+
+    Optionally, for debugging and developing filters, the filter's kernels (if 
+    FIR) and frequency response may be plotted with Matplotlib.
+
+    :param ppu_type: Composite PPU chip used for generating colors. See 
+        argparse arguments.
+    :type ppu_type: str
+
+    :param filter_type: Filter types for LC separation and QAM filtering.
+        See argparse arguments.
+    :type filter_type: list[str]
+
+    :param backdrop: Backdrop index color
+    :type backdrop: int
+
+    :param plot_filters: Enable plotting of filters using matplotlib,
+        defaults to False
+    :type plot_filters: bool, optional
+
+
+
+    :return: A tuple of filtering parameters, the sampling time, and the 
+        RasterTimings object. You may choose to destructure the tuple for 
+        convenience.
+        `(
+            luma_fir,
+            chroma_fir,
+            b_luma_iir, a_luma_iir,
+            b_chroma_iir, a_chroma_iir,
+            Fs_dt,
+            r
+        )`
+    :rtype: (np.nparray optional,
+        np.nparray optional,
+        np.nparray optional, np.nparray optional,
+        np.nparray optional, np.nparray optional,
+        float,
+        RasterTimings)
+    """
+
+    # dummy, will be overwritten
+    luma_fir = chroma_fir =\
+    b_luma_iir = a_luma_iir =\
+    b_chroma_iir = a_chroma_iir = None
+
+    # https://www.nesdev.org/wiki/Cycle_reference_chart#Clock_rates
+
+    X_main = 0
+    r = []
+    match ppu_type:
+        case "2C07":
+            X_main=26601712.5
+            r = RasterTimings(
+                HSYNC = 25,
+                B_PORCH_A = 4,
+                CBURST = 15,
+                B_PORCH_B = 5,
+                PULSE = 0,
+                L_BORDER = 18,
+                ACTIVE = 256,
+                R_BORDER = 9,
+                F_PORCH = 9,
+                CBURST_PHASE = 7,
+                PIXEL_SIZE = 8,
+                BACKDROP = ppu.BLANK_INDEX,
+                SCANLINES = 312
+            )
+        case "2C02":
+            X_main=(236.25e6 / 11)
+            r = RasterTimings(
+                HSYNC = 25,
+                B_PORCH_A = 4,
+                CBURST = 15,
+                B_PORCH_B = 5,
+                PULSE = 1,
+                L_BORDER = 15,
+                ACTIVE = 256,
+                R_BORDER = 11,
+                F_PORCH = 9,
+                CBURST_PHASE = 8,
+                PIXEL_SIZE = 8,
+                BACKDROP = backdrop,
+                SCANLINES = 262
+            )
+        case _:
+            print_err_quit("Unknown PPU type")
+
     # samplerate and colorburst freqs
     # used for phase shift
     PPU_Fs = X_main * 2
     PPU_Cb = X_main / 6
     Fs_dt = 1/PPU_Fs
 
-    if ppu_type == "2C07":
-        r = RasterTimings(
-            HSYNC = 25,
-            B_PORCH_A = 4,
-            CBURST = 15,
-            B_PORCH_B = 5,
-            PULSE = 0,
-            L_BORDER = 18,
-            ACTIVE = 256,
-            R_BORDER = 9,
-            F_PORCH = 9,
-            CBURST_PHASE = 7,
-            PIXEL_SIZE = 8,
-            BACKDROP = ppu.BLANK_INDEX,
-            SCANLINES = 312
-        )
-    else:
-        r = RasterTimings(
-            HSYNC = 25,
-            B_PORCH_A = 4,
-            CBURST = 15,
-            B_PORCH_B = 5,
-            PULSE = 1,
-            L_BORDER = 15,
-            ACTIVE = 256,
-            R_BORDER = 11,
-            F_PORCH = 9,
-            CBURST_PHASE = 8,
-            PIXEL_SIZE = 8,
-            BACKDROP = backdrop,
-            SCANLINES = 262
-        )
-
-    # dummy, will be overwritten
-    luma_kernel = chroma_kernel = b_luma = a_luma = b_chroma = a_chroma = 0
-
     MAX_DB_LOSS = 2
     MIN_DB_GAIN = 20
 
     # notch filter complementary decoding
     bw = 1.3e6
-    b_luma, a_luma = signal.iirdesign(
+    b_luma_iir, a_luma_iir = signal.iirdesign(
         [PPU_Cb-bw, PPU_Cb+bw],
         [PPU_Cb, PPU_Cb],
         gpass=MAX_DB_LOSS,
@@ -432,7 +499,7 @@ def configure_filters(
     )
     # chroma filters, used both in notch and comb filtering
     # SMPTE 170M-2004, page 5, section 7.2
-    b_chroma, a_chroma = signal.iirdesign(
+    b_chroma_iir, a_chroma_iir = signal.iirdesign(
         1.3e6,
         3.6e6,
         gpass=MAX_DB_LOSS,
@@ -538,43 +605,45 @@ def configure_filters(
         "iir": None,
     }
 
-    luma_kernel = kernel_dict[filter_type[0]]
+    luma_fir = kernel_dict[filter_type[0]]
     if len(filter_type) == 1:
-        chroma_kernel = luma_kernel
+        chroma_fir = luma_fir
+    elif len(filter_type) == 2:
+        chroma_fir = kernel_dict[filter_type[1]]
     else:
-        chroma_kernel = kernel_dict[filter_type[1]]
+        print_err_quit(f"Unknown filter type count: {len(filter_type)}.")
 
     if plot_filters:
         import matplotlib.pyplot as plt
         # luma
         plt.figure(figsize=(10,5))
-        if luma_kernel is None:
-            w, h = signal.freqz(b_luma, a_luma, fs=PPU_Fs)
+        if luma_fir is None:
+            w, h = signal.freqz(b_luma_iir, a_luma_iir, fs=PPU_Fs)
             x = w
             y = 20 * np.log10(abs(h))
             plt.subplot(2, 1, (1, 2))
             plt.semilogx(x, y)
         else:
-            w, h = signal.freqz(luma_kernel)
+            w, h = signal.freqz(luma_fir)
             x = w * PPU_Fs * 1.0 / (2 * np.pi)
             y = 20 * np.log10(abs(h))
             plt.subplot(2, 2, 3)
-            plt.plot(luma_kernel, "o")
+            plt.plot(luma_fir, "o")
             plt.subplot(2, 2, (1, 2))
             plt.semilogx(x, y)
         # chroma
-        if chroma_kernel is None:
-            w, h = signal.freqz(b_chroma, a_chroma, fs=PPU_Fs)
+        if chroma_fir is None:
+            w, h = signal.freqz(b_chroma_iir, a_chroma_iir, fs=PPU_Fs)
             x = w
             y = 20 * np.log10(abs(h))
             plt.subplot(2, 2, (1, 2))
             plt.semilogx(x, y)
         else:
-            w, h = signal.freqz(chroma_kernel)
+            w, h = signal.freqz(chroma_fir)
             x = w * PPU_Fs * 1.0 / (2 * np.pi)
             y = 20 * np.log10(abs(h))
             plt.subplot(2, 2, 4)
-            plt.plot(chroma_kernel, "o")
+            plt.plot(chroma_fir, "o")
             plt.subplot(2, 2, (1, 2))
             plt.semilogx(x, y)
         plt.ylabel('Amplitude [dB]')
@@ -587,19 +656,16 @@ def configure_filters(
         plt.show()
 
     return (
-        luma_kernel,
-        chroma_kernel,
-        b_luma, a_luma,
-        b_chroma, a_chroma,
+        luma_fir,
+        chroma_fir,
+        b_luma_iir, a_luma_iir,
+        b_chroma_iir, a_chroma_iir,
         Fs_dt,
         r
     )
-
-# filters one line of raw ppu pixels
-# returns raw voltage and next phase
 def encode_scanline(
         ppu_type: str,
-        data,
+        data: np.ndarray,
         starting_phase: int,
         phd: int,
         scanline: int,
@@ -608,6 +674,43 @@ def encode_scanline(
         alternate_line = False,
         skip_dot = False,
     ):
+    """
+    Encodes one line of raw ppu pixels. returns raw voltage and next phase.
+
+    :param ppu_type: Composite PPU chip used for generating colors. See 
+        argparse arguments.
+    :type ppu_type: str
+
+    :param data: Raw PPU pixels, in a 1D uint16 Numpy array.
+    :type data: np.ndarray
+
+    :param starting_phase: Phase of color generator clock. Ranges from 0-11.
+    :type starting_phase: int
+
+    :param phd: Phase distortion amount. See argparse arguments.
+    :type phd: int
+
+    :param scanline: Scanline number.
+    :type scanline: int
+
+    :param Fs_dt: Sample time.
+    :type Fs_dt: float
+
+    :param r: Raster timings.
+    :type r: RasterTimings
+
+    :param alternate_line: Alternate the line phase for PAL, defaults to False
+    :type alternate_line: bool, optional
+
+    :param skip_dot: Enable skipped dot behavior in 2C02s, defaults to False
+    :type skip_dot: bool, optional
+
+
+
+    :return: A Numpy array of voltage samples in a single scanline, along with 
+        the next accumulated phase.
+    :rtype: (np.ndarray, int)
+    """
 
     raw_ppu = np.full(r.PIXELS_PER_SCANLINE, ppu.BLANK_INDEX, dtype=np.int16)
     cvbs_ppu = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
@@ -665,11 +768,13 @@ def encode_scanline(
     return cvbs_ppu, scanline_phase
 
 def yc_fir(cvbs_ppu, kernel):
+    """Luma-chroma separation using FIR filtering"""
     y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
     c_line = cvbs_ppu - y_line
     return y_line, c_line
 
 def yc_iir(cvbs_ppu, b_luma, a_luma):
+    """Luma-chroma separation using IIR filtering"""
     # Figure 9.35a
     # Typical Simple Y/C Separator Complementary Filtering.
     # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
@@ -688,11 +793,14 @@ def yc_pal_delayline(
         luma_kernel,
         scanline_0: bool
     ):
-    # bandpass and combine lines in specific way to retrieve U and V
-    # based on Single Delay Line PAL Y/C Separator
-    # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
-    # Demystified (5th ed., p. 450). Elsevier.
-    # https://archive.org/details/video-demystified-5th-edition/
+    """
+    bandpass and combine lines in specific way to retrieve U and V.
+
+    based on Single Delay Line PAL Y/C Separator
+    Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
+    Demystified (5th ed., p. 450). Elsevier.
+    https://archive.org/details/video-demystified-5th-edition/
+    """
     if scanline_0:
         prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
 
@@ -709,7 +817,7 @@ def yc_pal_delayline(
         y_line, _ = yc_fir(cvbs_ppu, luma_kernel)
     return y_line, u_line, v_line, prev_line
 
-def yc_comb_2line(
+def yc_comb_1line(
         cvbs_ppu,
         prev_line,
         r: RasterTimings,
@@ -718,6 +826,7 @@ def yc_comb_2line(
         luma_kernel,
         scanline_0: bool
     ):
+    """Single-line comb filter for non-PAL composite"""
     if scanline_0:
         prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
 
@@ -734,7 +843,7 @@ def yc_comb_2line(
         y_line, _ = yc_fir(cvbs_ppu, luma_kernel)
     return y_line, u_line, v_line, prev_line
 
-def yc_comb_3line(
+def yc_comb_2line(
         cvbs_ppu,
         prev_line,
         r: RasterTimings,
@@ -744,14 +853,18 @@ def yc_comb_3line(
         pal_comb: bool,
         scanline_0: bool
     ):
-    # Figure 9.45, Figure 9.47
-    # Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and
-    # Video Processing,
-    # Two-Line Delay NTSC Y/C Separator for Standards Conversion and Video
-    # Processing.
-    # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
-    # Demystified (5th ed., p. 456). Elsevier.
-    # https://archive.org/details/video-demystified-5th-edition/
+    """
+    Two-line comb filtering based on two circuits:
+
+    Figure 9.45, Figure 9.47
+    Two-Line Delay PAL Y/C Separator Optimized for Standards Conversion and
+    Video Processing,
+    Two-Line Delay NTSC Y/C Separator for Standards Conversion and Video
+    Processing.
+    Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
+    Demystified (5th ed., p. 456). Elsevier.
+    https://archive.org/details/video-demystified-5th-edition/
+    """
     if scanline_0:
         prev_line = np.zeros((r.SAMPLES_PER_SCANLINE, 2), dtype=np.float64)
 
@@ -786,19 +899,75 @@ def yc_comb_3line(
     return y_line, c_line, c_line, prev_line
 
 def decode_scanline(
-    cvbs_ppu,
-    ppu_type: str,
-    scanline: int,
-    r: RasterTimings,
-    b_luma, a_luma,
-    b_chroma, a_chroma,
-    decoding_filter: str,
-    luma_kernel,
-    chroma_kernel,
-    prev_line,
-    alternate_line = False,
-    debug = False
+        cvbs_ppu: np.ndarray,
+        ppu_type: str,
+        scanline: int,
+        r: RasterTimings,
+        b_luma, a_luma,
+        b_chroma, a_chroma,
+        decoding_filter: str,
+        luma_kernel,
+        chroma_kernel,
+        prev_line,
+        alternate_line = False,
+        debug = False
     ):
+    """
+    Decodes a composite scanline into YUV.
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param ppu_type: Composite PPU chip used for generating colors. See 
+        argparse arguments.
+    :type ppu_type: str
+
+    :param scanline: Scanline number
+    :type scanline: int
+
+    :param r: Raster timings.
+    :type r: RasterTimings
+
+    :param b_luma: IIR filter numerator for YC separation. May be `None`.
+    :type b_luma: np.ndarray, optional
+
+    :param a_luma: IIR filter denominator for YC separation. May be `None`.
+    :type a_luma: np.ndarray, optional
+
+    :param b_chroma: IIR filter numerator for QAM demodulation filtering.
+        May be `None`.
+    :type b_chroma: np.ndarray, optional
+
+    :param a_chroma: IIR filter denominator for QAM demodulation filtering.
+        May be `None`.
+    :type a_chroma: np.ndarray, optional
+
+    :param decoding_filter: Method for luma and chroma decoding. See argparse   
+        arguments.
+    :type decoding_filter: str
+
+    :param luma_kernel: FIR kernel for YC separation. May be `None`.
+    :type luma_kernel: np.ndarray, optional
+
+    :param chroma_kernel: FIR kernel for QAM demodulation filtering.
+        May be `None`.
+    :type chroma_kernel: np.ndarray, optional
+
+    :param prev_line: Previous composite signal scanlines for comb filtering.
+    :type prev_line: np.ndarray
+
+    :param alternate_line: Alternate the line phase for PAL, defaults to False
+    :type alternate_line: bool, optional
+
+    :param debug: Enable debug messages and options, defaults to False
+    :type debug: bool, optional
+
+
+
+    :return: The current decoded scanline in YUV,
+        and the previous composite scanline.
+    :rtype: np.ndarray, np.ndarray
+    """
 
     # normalize blank/black
     cvbs_ppu -= ppu.BLANK_LEVEL
@@ -817,7 +986,7 @@ def decode_scanline(
                         scanline == 0
                     )
             else:
-                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(
+                YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_1line(
                     cvbs_ppu,
                     prev_line,
                     r,
@@ -826,7 +995,7 @@ def decode_scanline(
                     scanline == 0
                 )
         case "2-line":
-            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_3line(
+            YUV_line[:, 0], u_line, v_line, prev_line = yc_comb_2line(
                 cvbs_ppu,
                 prev_line,
                 r,
@@ -899,19 +1068,73 @@ def decode_scanline(
 # keeps track of odd-even frame render parity
 is_odd_frame = True
 
-# encodes a (240,256) array of uint16 raw PPU pixels into an RGB output image
-# also outputs the next starting phase for the next frame
+
 def encode_frame(raw_ppu,
         ppu_type: str,
         starting_phase: int,
         phd: int,
-        filter_config,
-        decoding_filter,
-        skipdot = False,
+        filter_config: tuple,
+        decoding_filter: str,
+        skip_dot = False,
         full_resolution = False,
         debug = False,
         disable_yc = None,
     ):
+
+    """
+    Encodes a (240,256) array of uint16 raw PPU pixels into an RGB output 
+    image. Also outputs the next starting phase for the next frame.
+
+    :param ppu_type: Composite PPU chip used for generating colors. See 
+        argparse arguments.
+    :type ppu_type: str
+
+    :param starting_phase: Phase of color generator clock. Ranges from 0-11.
+    :type starting_phase: int
+
+    :param phd: Phase distortion amount. See argparse arguments.
+    :type phd: int
+
+    :param filter_config: Filter configuration generated by 
+        `configure_filters()`.
+        `(
+            luma_fir,
+            chroma_fir,
+            b_luma_iir, a_luma_iir,
+            b_chroma_iir, a_chroma_iir,
+            Fs_dt,
+            r
+        )`
+    :type filter_config: tuple(np.nparray optional,
+        np.nparray optional,
+        np.nparray optional, np.nparray optional,
+        np.nparray optional, np.nparray optional,
+        float,
+        RasterTimings)
+
+    :param decoding_filter: Method for luma and chroma decoding. See argparse   
+        arguments.
+    :type decoding_filter: str
+
+    :param skip_dot: Enable skipped dot behavior in 2C02s, defaults to False
+    :type skip_dot: bool, optional
+
+    :param full_resolution: Render the entire raster instead of cropping to 
+        active video, defaults to False
+    :type full_resolution: bool, optional
+
+    :param debug: Enable debug messages and options, defaults to False
+    :type debug: bool, optional
+
+    :param disable_yc: Disables chroma by setting UV to 0. Disables luma by 
+        setting Y to 0.5. Defaults to `None`.
+    :type disable_yc: str, optional
+
+
+
+    :return: The output RGB image, and the beginning phase of the next field.
+    :rtype: np.ndarray, int
+    """
 
     (
         luma_kernel,
@@ -940,8 +1163,8 @@ def encode_frame(raw_ppu,
     global is_odd_frame
     is_odd_frame = not is_odd_frame
 
-    if ppu_type == "2C07": skipdot = False
-    skip = skipdot and is_odd_frame
+    if ppu_type == "2C07": skip_dot = False
+    skip = skip_dot and is_odd_frame
 
     next_phase = starting_phase % 12
 
