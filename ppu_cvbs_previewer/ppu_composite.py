@@ -83,6 +83,18 @@ def parse_argv(argv):
 
     return parser.parse_args(argv[1:])
 
+def normalize_table(min, max):
+    global signal_table_composite, SYNC_LEVEL, BLANK_LEVEL, BLACK_LEVEL, WHITE_LEVEL
+    signal_table_composite -= min
+    signal_table_composite /= abs(max - min)
+
+    # update constants
+    SYNC_LEVEL = signal_table_composite[5, 0, 0]
+    BLANK_LEVEL = signal_table_composite[5, 1, 0]
+    WHITE_LEVEL = signal_table_composite[3, 0, 0]
+    BLACK_LEVEL = signal_table_composite[1, 1, 0]
+
+# 2C07 phase alternation
 ALTERNATE_PHASE = (
     0,
 
@@ -195,3 +207,4 @@ def main(argv=None):
 
 if __name__=='__main__':
     main(sys.argv)
+
