@@ -1059,10 +1059,8 @@ def yc_comb_2line(
     if CHROMA_COMB_IN_2D_COMB:
         if pal_comb:
             # ugly: roll this THE OTHER WAY for proper chroma extraction
-            prev_0 = np.roll(prev_line[:,0], -r.NEXT_SHIFT//2)
-            prev_1 = np.roll(prev_line[:,1], -r.NEXT_SHIFT)
-            prev_0 = np.roll(prev_0, -r.NEXT_SHIFT)
-            prev_1 = np.roll(prev_1, -r.NEXT_SHIFT*2)
+            prev_0 = np.roll(prev_line[:,0], -r.NEXT_SHIFT//2 - r.NEXT_SHIFT)
+            prev_1 = np.roll(prev_line[:,1], -r.NEXT_SHIFT*3)
             u_line = np.array(prev_0+prev_1) / 2
             v_line = np.array(prev_0-prev_1) / 2
         else:
