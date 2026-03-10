@@ -83,30 +83,41 @@ def parse_argv(argv):
 
     return parser.parse_args(argv[1:])
 
+ALTERNATE_PHASE = (
+    0,
+
+    4,
+    3,
+    2,
+    1,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7,
+    6,
+    5,
+
+    13,
+    14,
+    15
+)
+
 def pal_phase(hue: int, alternate_line=False):
     """2C07 phase alternation"""
-    ALTERNATE_PHASE = {
-        1: 4,
-        2: 3,
-        3: 2,
-        4: 1,
-        5: 12,
-        6: 11,
-        7: 10,
-        8: 9,
-        9: 8,
-        10: 7,
-        11: 6,
-        12: 5,
-    }
-    if (hue >= 1 and hue <= 12) and alternate_line:
+    if alternate_line:
         return ALTERNATE_PHASE[hue]
     else:
         return hue
 
 def in_color_phase(hue: int, phase: int, alternate_line=False):
-    """checks if current sample is high or low in a given color wave"""
-    return ((pal_phase(hue, alternate_line) + phase) % 12) < 6
+    """checks if current sample is high or low in a given color wave.
+
+    input is assumed to be in the value range of 1-12.
+
+    returns true if sample is high."""
+    return ((pal_phase(hue, alternate_line) + phase) % 12) >= 6
 
 def encode_composite_sample(
     pixel: int,
@@ -124,8 +135,7 @@ def encode_composite_sample(
         elif pixel == COLORBURST_INDEX:
             return signal_table_composite[
                 4,
-                int(not in_color_phase(
-                    cburst_phase, wave_phase, alternate_line)),
+                int(in_color_phase(cburst_phase, wave_phase, alternate_line)),
                 0
             ]
         else:
@@ -137,9 +147,12 @@ def encode_composite_sample(
     # 1 = emphasis activate
     if emphasis != 0:
         attenuate = int(
-            (((emphasis & 1) and in_color_phase(0xC, wave_phase, alternate_line)) or
-            ((emphasis & 2) and in_color_phase(0x4, wave_phase, alternate_line)) or
-            ((emphasis & 4) and in_color_phase(0x8, wave_phase, alternate_line))) and
+            (((emphasis & 1) and not in_color_phase(
+                0xC, wave_phase, alternate_line)) or
+            ((emphasis & 2) and not in_color_phase(
+                0x4, wave_phase, alternate_line)) or
+            ((emphasis & 4) and not in_color_phase(
+                0x8, wave_phase, alternate_line))) and
             (hue < 0xE)
         )
     else: attenuate = 0
@@ -150,10 +163,18 @@ def encode_composite_sample(
 
     # generate sinusoidal waveforms with matching p-p amplitudes
     if (sinusoidal_peak_generation and hue > 0x00 and hue < 0x0D):
-        wave_amp = (signal_table_composite[luma, 0, attenuate] - signal_table_composite[luma, 1, attenuate]) / 2
-        wave_dc = (signal_table_composite[luma, 0, attenuate] + signal_table_composite[luma, 1, attenuate]) / 2
+        wave_amp = (
+            signal_table_composite[luma, 0, attenuate] -\
+            signal_table_composite[luma, 1, attenuate]) / 2
+        wave_dc = (
+            signal_table_composite[luma, 0, attenuate] +\
+            signal_table_composite[luma, 1, attenuate]) / 2
 
-        return wave_dc + (np.sin((2 * np.pi * (hue+0.5)/12) + (2 * np.pi / 12 * (wave_phase))) * wave_amp)
+        return wave_dc + (
+            np.sin(
+                (2 * np.pi * (hue+0.5)/12) + (2 * np.pi / 12 * (wave_phase))
+            ) * wave_amp
+        )
 
     n_wave_level = 0
 
@@ -165,7 +186,7 @@ def encode_composite_sample(
     # 0 = waveform high; 1 = waveform low
     else:
         n_wave_level = int(
-            not in_color_phase(hue, wave_phase, alternate_line))
+            in_color_phase(hue, wave_phase, alternate_line))
 
     return signal_table_composite[luma, n_wave_level, attenuate]
 

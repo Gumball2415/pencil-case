@@ -25,7 +25,7 @@ from scipy import signal
 from PIL import Image, ImagePalette
 from dataclasses import dataclass, field
 
-VERSION = "0.12.2"
+VERSION = "0.13.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -244,34 +244,6 @@ def parse_indexed_png(file: str, palfile: str):
         # return image with raw indices of $00-$3F
         return np.array(im, dtype=int)
 
-def save_image(
-        ppu_type: str,
-        input: str,
-        out,
-        phases,
-        full_resolution = False,
-        debug = False
-    ):
-    if ppu_type == "2C07":
-        out_width=768
-        out_height=576
-    else:
-        out_width=640
-        out_height=480
-    with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
-    # scale image
-        if (full_resolution or debug):
-            imageout = imageout.resize(
-                (imageout.size[0], int(imageout.size[1]*8)), 
-                Image.Resampling.NEAREST)
-        else:
-            imageout = imageout.resize(
-                (out_width, imageout.size[1]), 
-                resample=Image.Resampling.LANCZOS)
-            imageout = imageout.resize(
-                (imageout.size[0], out_height), Image.Resampling.NEAREST)
-        imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
-
 
 
 # filtering and raster configuration
@@ -296,6 +268,7 @@ class RasterTimings:
     BACKDROP: int
 
     PIXEL_SIZE: int
+    SAMPLES_PER_SC: int
 
     SCANLINES: int
     NEXT_SHIFT: int = field(init=False)
@@ -314,34 +287,78 @@ class RasterTimings:
     PIXELS_PER_SCANLINE: int = field(init=False)
     SAMPLES_PER_SCANLINE: int = field(init=False)
 
-    def __post_init__(self):
-        self.BEFORE_ACTIVE = self.HSYNC + self.B_PORCH_A + self.CBURST\
-            + self.B_PORCH_B + self.PULSE + self.L_BORDER
-        self.AFTER_ACTIVE = self.BEFORE_ACTIVE + self.ACTIVE
-        self.BEFORE_VID = self.HSYNC + self.B_PORCH_A + self.CBURST\
-            + self.B_PORCH_B
-        self.AFTER_VID = self.BEFORE_VID + self.PULSE + self.L_BORDER\
-            + self.ACTIVE + self.R_BORDER
+    def __post_init__(s):
+        s.BEFORE_ACTIVE = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B +\
+            s.PULSE + s.L_BORDER
+        s.AFTER_ACTIVE = s.BEFORE_ACTIVE + s.ACTIVE
+        s.BEFORE_VID = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B
+        s.AFTER_VID = s.BEFORE_VID + s.PULSE + s.L_BORDER + s.ACTIVE +\
+            s.R_BORDER
 
-        self.BEFORE_CBURST = self.HSYNC + self.B_PORCH_A
-        self.AFTER_CBURST = self.BEFORE_CBURST + self.CBURST
+        s.BEFORE_CBURST = s.HSYNC + s.B_PORCH_A
+        s.AFTER_CBURST = s.BEFORE_CBURST + s.CBURST
 
-        self.PULSE_INDEX = self.HSYNC + self.B_PORCH_A + self.CBURST\
-            + self.B_PORCH_B
+        s.PULSE_INDEX = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B
 
-        self.PIXELS_PER_SCANLINE = self.HSYNC + self.B_PORCH_A + self.CBURST\
-            + self.B_PORCH_B + self.PULSE + self.L_BORDER + self.ACTIVE\
-            + self.R_BORDER + self.F_PORCH
-        self.SAMPLES_PER_SCANLINE = self.PIXELS_PER_SCANLINE * self.PIXEL_SIZE
+        s.PIXELS_PER_SCANLINE = s.HSYNC + s.B_PORCH_A + s.CBURST +\
+            s.B_PORCH_B + s.PULSE + s.L_BORDER + s.ACTIVE + s.R_BORDER +\
+            s.F_PORCH
+        s.SAMPLES_PER_SCANLINE = s.PIXELS_PER_SCANLINE * s.PIXEL_SIZE
         # scanline shift to account for phase
-        self.NEXT_SHIFT = (self.SAMPLES_PER_SCANLINE) % 12
+        s.NEXT_SHIFT = (s.SAMPLES_PER_SCANLINE) % s.SAMPLES_PER_SC
 
-def RC_lowpass(signal, amount, dt):
+def save_image(
+        ppu_type: str,
+        input: str,
+        out,
+        phases,
+        r: RasterTimings,
+        full_resolution = False,
+        debug = False
+    ):
+    if ppu_type == "2C07":
+        out_width=768
+        out_height=576
+    else:
+        out_width=640
+        out_height=480
+    with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
+    # scale image
+        if (full_resolution or debug):
+            imageout = imageout.resize(
+                (imageout.size[0], int(imageout.size[1]*r.PIXEL_SIZE)), 
+                Image.Resampling.NEAREST)
+        else:
+            imageout = imageout.resize(
+                (out_width, imageout.size[1]), 
+                resample=Image.Resampling.LANCZOS)
+            imageout = imageout.resize(
+                (imageout.size[0], out_height), Image.Resampling.NEAREST)
+        imageout.save(f"{os.path.splitext(input)[0]}_ppucvbs_ph_{phases}.png")
+
+def RC_lowpass(
+        signal: np.ndarray,
+        amount: float,
+        dt: float):
     """
     phase shift the composite using a simple lowpass
     for differential phase distortion.
 
     https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+    :param signal: Input composite signal
+    :type signal: np.ndarray
+
+    :param amount: Phase distortion amount. See argparse arguments.
+    :type amount: int
+
+    :param dt: Sample time of signal (inverse of samplerate).
+    :type dt: float
+
+
+
+    :return: Phase distorted signal.
+    :rtype: np.ndarray
     """
     v_out = np.zeros(signal.shape, np.float64)
     v_prev = signal[0]
@@ -361,18 +378,31 @@ def RC_lowpass(signal, amount, dt):
         v_out[i] = v_prev
     return v_out
 
-def QAM_phase(signal: np.ndarray):
-    """
-    Gets the phase of a given sinusoid in radians. The given signal must be a
-    length of one period.
+def QAM_phase(signal: np.ndarray, sc_samples: int):
+    """Checks the phase for a sinusoid whose period is `sc_samples` samples.
+
+    :param signal: Input sinusoidal signal
+    :type signal: np.ndarray
+
+    :param sc_samples: Period length of cycle, in samples
+    :type sc_samples: int
+
+
+
+    :return: Angle, in radians.
+    :rtype: float
     """
     buf_size = len(signal)
-    t = np.arange(12)
-    u = np.tile(np.sin(2 * np.pi / 12 * t)*2, buf_size//12)
-    v = np.tile(np.cos(2 * np.pi / 12 * t)*2, buf_size//12)
+    t = np.arange(sc_samples)
+    u = np.sin(2*np.pi*t / sc_samples)
+    v = np.cos(2*np.pi*t / sc_samples)
+    
+    tilecount = int(np.ceil(buf_size/sc_samples))
+    u = np.tile(u, tilecount)[:buf_size]
+    v = np.tile(v, tilecount)[:buf_size]
     signal_U = np.average(signal * u)
     signal_V = np.average(signal * v)
-    return np.atan2(signal_U, signal_V)
+    return np.arctan2(signal_U, signal_V)
 
 def configure_filters(
         ppu_type: str,
@@ -453,7 +483,8 @@ def configure_filters(
                 R_BORDER = 9,
                 F_PORCH = 9,
                 CBURST_PHASE = 7,
-                PIXEL_SIZE = 8,
+                PIXEL_SIZE = 10,
+                SAMPLES_PER_SC = 12,
                 BACKDROP = ppu.BLANK_INDEX,
                 SCANLINES = 312
             )
@@ -471,6 +502,7 @@ def configure_filters(
                 F_PORCH = 9,
                 CBURST_PHASE = 8,
                 PIXEL_SIZE = 8,
+                SAMPLES_PER_SC = 12,
                 BACKDROP = backdrop,
                 SCANLINES = 262
             )
@@ -511,10 +543,10 @@ def configure_filters(
 
     # kernels
 
-    box_kernel = np.full(12, 1, dtype=np.float64)
+    box_kernel = np.full(r.SAMPLES_PER_SC, 1, dtype=np.float64)
     box_kernel /= np.sum(box_kernel)
 
-    kernel_taps = 12*4 # M
+    kernel_taps = r.SAMPLES_PER_SC*4 # M
     kernel_odd = kernel_taps+1
     # Equation 16-3
     # https://www.dspguide.com/ch16/2.htm
@@ -667,7 +699,7 @@ def encode_scanline(
         ppu_type: str,
         data: np.ndarray,
         starting_phase: int,
-        phd: int,
+        phd: float,
         scanline: int,
         Fs_dt: float,
         r: RasterTimings,
@@ -688,7 +720,7 @@ def encode_scanline(
     :type starting_phase: int
 
     :param phd: Phase distortion amount. See argparse arguments.
-    :type phd: int
+    :type phd: float
 
     :param scanline: Scanline number.
     :type scanline: int
@@ -751,7 +783,7 @@ def encode_scanline(
                     r.CBURST_PHASE,
                     alternate_line
                 )
-            scanline_phase = (scanline_phase + 1) % 12
+            scanline_phase = (scanline_phase + 1) % r.SAMPLES_PER_SC
 
         # due to skipped dot, the raw PPU index
         # and the encoded index is unsynced
@@ -767,30 +799,51 @@ def encode_scanline(
 
     return cvbs_ppu, scanline_phase
 
-def yc_fir(cvbs_ppu, kernel):
-    """Luma-chroma separation using FIR filtering"""
+def yc_fir(cvbs_ppu: np.ndarray, kernel: np.ndarray):
+    """Complementary luma-chroma separation using FIR filtering
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param kernel: FIR kernel for YC separation.
+    :type kernel: np.ndarray
+
+
+
+    :return: Luma and chroma buffer
+    :rtype: (np.ndarray, np.ndarray)
+    """
     y_line = signal.convolve(cvbs_ppu, kernel, mode="same")
     c_line = cvbs_ppu - y_line
     return y_line, c_line
 
-def yc_iir(cvbs_ppu, b_luma, a_luma):
-    """Luma-chroma separation using IIR filtering"""
-    # Figure 9.35a
-    # Typical Simple Y/C Separator Complementary Filtering.
-    # Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
-    # Demystified (5th ed., p. 448). Elsevier.
-    # https://archive.org/details/video-demystified-5th-edition/
+def yc_iir(cvbs_ppu: np.ndarray, b_luma: np.ndarray, a_luma: np.ndarray):
+    """Complementary luma-chroma separation using IIR filtering
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param b_luma: IIR filter numerator for YC separation.
+    :type b_luma: np.ndarray
+
+    :param a_luma: IIR filter denominator for YC separation.
+    :type a_luma: np.ndarray
+
+
+    :return: Luma and chroma buffer
+    :rtype: (np.ndarray, np.ndarray)
+    """
     y_line = signal.filtfilt(b_luma, a_luma, cvbs_ppu)
     c_line = cvbs_ppu - y_line
     return y_line, c_line
 
 def yc_pal_delayline(
-        cvbs_ppu,
-        prev_line,
+        cvbs_ppu: np.ndarray,
+        prev_line: np.ndarray,
         r: RasterTimings,
-        b_luma,
-        a_luma,
-        luma_kernel,
+        b_luma: np.ndarray,
+        a_luma: np.ndarray,
+        luma_kernel: np.ndarray,
         scanline_0: bool
     ):
     """
@@ -800,6 +853,32 @@ def yc_pal_delayline(
     Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
     Demystified (5th ed., p. 450). Elsevier.
     https://archive.org/details/video-demystified-5th-edition/
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param prev_line: Previous composite signal scanlines for comb filtering.
+    :type prev_line: np.ndarray
+
+    :param r: Raster timings.
+    :type r: RasterTimings
+
+    :param b_luma: IIR filter numerator for YC separation. May be `None`.
+    :type b_luma: np.ndarray, optional
+
+    :param a_luma: IIR filter denominator for YC separation. May be `None`.
+    :type a_luma: np.ndarray, optional
+
+    :param luma_kernel: FIR kernel for YC separation. May be `None`.
+    :type luma_kernel: np.ndarray, optional
+
+    :param scanline_0: If this is the first scanline being sent.
+    :type scanline_0: bool
+
+
+
+    :return: Y buffer, U buffer, V buffer, and the previous line
+    :rtype: (np.ndarray, np.ndarray, np.ndarray, np.ndarray)
     """
     if scanline_0:
         prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
@@ -808,7 +887,7 @@ def yc_pal_delayline(
     v_line = (cvbs_ppu - prev_line) / 2
 
     # rotate chroma line to account for next line's phase shift
-    prev_line = np.roll(cvbs_ppu, -4)
+    prev_line = np.roll(cvbs_ppu, -r.NEXT_SHIFT)
 
     # filter luma
     if luma_kernel is None:
@@ -818,15 +897,44 @@ def yc_pal_delayline(
     return y_line, u_line, v_line, prev_line
 
 def yc_comb_1line(
-        cvbs_ppu,
-        prev_line,
+        cvbs_ppu: np.ndarray,
+        prev_line: np.ndarray,
         r: RasterTimings,
-        b_luma,
-        a_luma,
-        luma_kernel,
+        b_luma: np.ndarray,
+        a_luma: np.ndarray,
+        luma_kernel: np.ndarray,
         scanline_0: bool
     ):
-    """Single-line comb filter for non-PAL composite"""
+    """
+    Single-line comb filter for non-PAL composite
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param prev_line: Previous composite signal scanlines for comb filtering.
+    :type prev_line: np.ndarray
+
+    :param r: Raster timings.
+    :type r: RasterTimings
+
+    :param b_luma: IIR filter numerator for YC separation. May be `None`.
+    :type b_luma: np.ndarray, optional
+
+    :param a_luma: IIR filter denominator for YC separation. May be `None`.
+    :type a_luma: np.ndarray, optional
+
+    :param luma_kernel: FIR kernel for YC separation. May be `None`.
+    :type luma_kernel: np.ndarray, optional
+
+    :param scanline_0: If this is the first scanline being sent.
+    :type scanline_0: bool
+
+
+
+    :return: Y buffer, U buffer, V buffer, and the previous line
+    :rtype: (np.ndarray, np.ndarray, np.ndarray, np.ndarray)
+    """
+
     if scanline_0:
         prev_line = np.zeros(r.SAMPLES_PER_SCANLINE, dtype=np.float64)
 
@@ -834,7 +942,7 @@ def yc_comb_1line(
 
     # align chroma phase of next line to be out-of-phase
     # to avoid any funny business
-    prev_line = np.roll(cvbs_ppu, 2)
+    prev_line = np.roll(cvbs_ppu, r.NEXT_SHIFT//2)
 
     # notch filter the luma
     if luma_kernel is None:
@@ -847,9 +955,9 @@ def yc_comb_2line(
         cvbs_ppu,
         prev_line,
         r: RasterTimings,
-        b_luma,
-        a_luma,
-        luma_kernel,
+        b_luma: np.ndarray,
+        a_luma: np.ndarray,
+        luma_kernel: np.ndarray,
         pal_comb: bool,
         scanline_0: bool
     ):
@@ -864,6 +972,33 @@ def yc_comb_2line(
     Jack, K. (2007). NTSC and PAL digital encoding and decoding. In Video
     Demystified (5th ed., p. 456). Elsevier.
     https://archive.org/details/video-demystified-5th-edition/
+
+    :param cvbs_ppu: Composite signal scanline input
+    :type cvbs_ppu: np.ndarray
+
+    :param prev_line: Previous composite signal scanlines for comb filtering.
+    :type prev_line: np.ndarray
+
+    :param r: Raster timings.
+    :type r: RasterTimings
+
+    :param b_luma: IIR filter numerator for YC separation. May be `None`.
+    :type b_luma: np.ndarray, optional
+
+    :param a_luma: IIR filter denominator for YC separation. May be `None`.
+    :type a_luma: np.ndarray, optional
+
+    :param luma_kernel: FIR kernel for YC separation. May be `None`.
+    :type luma_kernel: np.ndarray, optional
+
+    :param scanline_0: If this is the first scanline being sent.
+    :type scanline_0: bool
+
+
+
+    :return: Y buffer, U buffer, V buffer, and the previous lines (stored as
+    one NDarray)
+    :rtype: (np.ndarray, np.ndarray, np.ndarray, np.ndarray)
     """
     if scanline_0:
         prev_line = np.zeros((r.SAMPLES_PER_SCANLINE, 2), dtype=np.float64)
@@ -873,6 +1008,16 @@ def yc_comb_2line(
     # We use the delayed line to sync with luma
     c_line = prev_line[:, 1]
 
+    # Experiment: use 1d comb filtering to process chroma
+    CHROMA_COMB = False
+
+    if CHROMA_COMB:
+        if pal_comb:
+            u_line = np.array(prev_line[:,0]+prev_line[:,1]) / 2
+            v_line = np.array(prev_line[:,0]-prev_line[:,1]) / 2
+        else:
+            u_line = v_line = np.array(prev_line[:, 0]-prev_line[:,1]) / 2
+
     y_line = (cvbs_ppu + prev_line[:, 1])/2
     y_line = prev_line[:, 0] - y_line
 
@@ -880,35 +1025,33 @@ def yc_comb_2line(
         y_line /= 2
 
     # this is sharper than using an iirpeak
+    # recommended to use a notch filter
     if luma_kernel is None:
         _, y_line = yc_iir(y_line, b_luma, a_luma)
     else:
         _, y_line = yc_fir(y_line, luma_kernel)
 
+    if not CHROMA_COMB: u_line = v_line = c_line
+
     y_line = prev_line[:, 0] - y_line
 
     # rotate chroma line to account for next line's phase shift
-    if pal_comb:
-        shift = -1
-    else:
-        shift = 2
-
-    prev_line[:, 1] = np.roll(prev_line[:,0], shift)
-    prev_line[:, 0] = np.roll(cvbs_ppu, shift)
+    prev_line[:, 1] = np.roll(prev_line[:,0], r.NEXT_SHIFT//2)
+    prev_line[:, 0] = np.roll(cvbs_ppu, r.NEXT_SHIFT//2)
     
-    return y_line, c_line, c_line, prev_line
+    return y_line, u_line, v_line, prev_line
 
 def decode_scanline(
         cvbs_ppu: np.ndarray,
         ppu_type: str,
         scanline: int,
         r: RasterTimings,
-        b_luma, a_luma,
-        b_chroma, a_chroma,
+        b_luma: np.ndarray, a_luma: np.ndarray,
+        b_chroma: np.ndarray, a_chroma: np.ndarray,
         decoding_filter: str,
-        luma_kernel,
-        chroma_kernel,
-        prev_line,
+        luma_kernel: np.ndarray,
+        chroma_kernel: np.ndarray,
+        prev_line: np.ndarray,
         alternate_line = False,
         debug = False
     ):
@@ -1015,54 +1158,70 @@ def decode_scanline(
 
     DISABLE_CHROMA = False
 
-    # get UV decoding phases
-    # correct for weird 90 degree offset
-    cburst_phase = QAM_phase(
-        u_line[(r.BEFORE_CBURST+3)*r.PIXEL_SIZE:(r.AFTER_CBURST-3)*r.PIXEL_SIZE]
-    ) - np.pi/2
-
-    # generate UV decoding sines
-    cburst_shift = (-r.BEFORE_CBURST+3 + r.NEXT_SHIFT) % 12
-
-    t = np.arange(12, dtype=np.float64) + cburst_shift
-
-    # adjust with colorburst = 135 degrees
-    # with this setting, hues match this image:
-    # https://forums.nesdev.org/viewtopic.php?p=133638#p133638
-    if ppu_type == "2C07":
-        # chroma is delayed by one line, flip parity
-        if decoding_filter == "2-line":
-            alternate_line = not alternate_line
-
-        # PAL delay line adjusts the subcarrier phase for us
-        # otherwise, nudge reference from 180 degrees to 135 degrees
-        if decoding_filter != "1-line":
-            cburst_phase += np.pi/4 * (1 if alternate_line else -1)
-
-    U_decode = np.sin((2 * np.pi / 12 * t) - cburst_phase) * 2
-    V_decode = np.cos((2 * np.pi / 12 * t) - cburst_phase) * 2
-
-    # switch V
-    if ppu_type == "2C07" and alternate_line: V_decode *= -1
-
-    tilecount = int(np.ceil(r.SAMPLES_PER_SCANLINE/12))
-    U_decode = np.tile(U_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
-    V_decode = np.tile(V_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
-    # qam
+    # this is easily the most complicated part of decoding, especially in PAL,
+    # and 1-line comb filtering.
     if not DISABLE_CHROMA:
-        YUV_line[:, 1] = u_line * U_decode
-        YUV_line[:, 2] = v_line * V_decode
+        # measure actual angle of colorburst
+        start = (r.BEFORE_CBURST)*r.PIXEL_SIZE
+        cburst_phase = QAM_phase(
+            u_line[
+                start:start+r.SAMPLES_PER_SC*12],
+            r.SAMPLES_PER_SC
+        )
+        cburst_shift = (r.NEXT_SHIFT-start) % r.SAMPLES_PER_SC
+
+        t = np.arange(r.SAMPLES_PER_SC, dtype=np.float64)-cburst_shift
+
+        # set phase to 180 degrees
+        cburst_phase -= -np.pi
+
+        v_flip = 1
+
+        # adjust with colorburst = 135 degrees
+        # with this setting, hues match these images:
+        # https://forums.nesdev.org/viewtopic.php?p=133638#p133638
+        # https://forums.nesdev.org/viewtopic.php?p=187338#p187338
+        if ppu_type == "2C07":
+            # in 2-line comb, chroma is off by one
+            if decoding_filter == "2-line":
+                alternate_line = not alternate_line
+
+            if alternate_line: v_flip = -1
+
+            # nudge reference from 180 degrees to 135 degrees
+            if decoding_filter == "1-line":
+                # delay line handles the colorburst swing for us
+                cburst_phase -= np.pi/4
+            else:
+                cburst_phase += np.pi/4*v_flip*-1
+        # MAGIC: off by one?
+        else: t -= 1
+
+        # generate UV decoding sines
+        U_decode = np.sin((2*np.pi*t/r.SAMPLES_PER_SC)-cburst_phase)*2
+        V_decode = np.cos((2*np.pi*t/r.SAMPLES_PER_SC)-cburst_phase)*2*v_flip
+
+        # extend decoding sines to length of scanline
+        tilecount = int(np.ceil(r.SAMPLES_PER_SCANLINE/r.SAMPLES_PER_SC))
+        U_decode = np.tile(U_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
+        V_decode = np.tile(V_decode, tilecount)[:r.SAMPLES_PER_SCANLINE]
+
+        # qam
+        if not DISABLE_CHROMA:
+            YUV_line[:, 1] = u_line * U_decode
+            YUV_line[:, 2] = v_line * V_decode
 
 
-    # filter chroma
     if debug:
         YUV_line = np.array([cvbs_ppu, YUV_line[:, 1], YUV_line[:, 2]]).T
     elif chroma_kernel is not None:
+    # filter chroma
         YUV_line[:, 1], _ = yc_fir(YUV_line[:, 1], chroma_kernel)
         YUV_line[:, 2], _ = yc_fir(YUV_line[:, 2], chroma_kernel)
     else:
         YUV_line[:, 1] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 1])
         YUV_line[:, 2] = signal.filtfilt(b_chroma, a_chroma, YUV_line[:, 2])
+
     return YUV_line, prev_line
 
 # keeps track of odd-even frame render parity
@@ -1078,7 +1237,7 @@ def encode_frame(raw_ppu,
         skip_dot = False,
         full_resolution = False,
         debug = False,
-        disable_yc = None,
+        disable_yc: str = None,
     ):
 
     """
@@ -1147,9 +1306,10 @@ def encode_frame(raw_ppu,
 
     out = np.zeros((raw_ppu.shape[0], r.SAMPLES_PER_SCANLINE, 3), np.float64)
 
-    # 3-line comb filtering needs an extra scanline
-    delay_lines = 1
-    if decoding_filter == "3-line":
+    # 2-line comb filtering needs an extra scanline
+    delay_lines = 0
+    if decoding_filter == "2-line":
+        delay_lines = 1
         raw_ppu = np.append(
             raw_ppu,
             np.full((delay_lines, raw_ppu.shape[1]), 0x0F, dtype=np.int16),
@@ -1163,14 +1323,14 @@ def encode_frame(raw_ppu,
     global is_odd_frame
     is_odd_frame = not is_odd_frame
 
-    if ppu_type == "2C07": skip_dot = False
     skip = skip_dot and is_odd_frame
+    if ppu_type == "2C07": skip_dot = False
 
-    next_phase = starting_phase % 12
+    next_phase = starting_phase % r.SAMPLES_PER_SC
 
     for scanline in range(raw_ppu.shape[0]):
         # todo: concurrency for non-comb filter decoding
-        alternate_line = ppu_type == "2C07" and (scanline % 2 == 0)
+        alternate_line = ppu_type == "2C07" and ((scanline-delay_lines) % 2 == 0)
 
         # encode scanline
         skip &= (scanline==0)
@@ -1204,7 +1364,7 @@ def encode_frame(raw_ppu,
 
         line_index = scanline
         # delay scanline in case of comb filtering
-        if decoding_filter == "3-line":
+        if decoding_filter == "2-line":
             line_index -= delay_lines
             # do not allow negative indexing
             if line_index < 0: continue
@@ -1214,7 +1374,7 @@ def encode_frame(raw_ppu,
     # account for the rest of the scanlines
     next_phase = (
         (next_phase + r.SCANLINES - raw_ppu.shape[0])*r.SAMPLES_PER_SCANLINE
-    ) % 12
+    ) % r.SAMPLES_PER_SC
 
     # crop image to active video
     if not (full_resolution or debug):
@@ -1274,6 +1434,8 @@ def main(argv=None):
         args.plot_filters
     )
 
+    r = filter_config[7]
+
     for _ in range(args.frames):
         prev = phase
         out, phase = encode_frame(raw_ppu,
@@ -1297,6 +1459,7 @@ def main(argv=None):
                 args.input,
                 out,
                 prev,
+                r,
                 args.full_resolution,
                 args.debug
             )
@@ -1315,6 +1478,7 @@ def main(argv=None):
             args.input,
             out,
             phases,
+            r,
             args.full_resolution,
             args.debug
         )
