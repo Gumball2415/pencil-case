@@ -64,9 +64,9 @@ BLANK_INDEX = 2 << 9
 COLORBURST_INDEX = 3 << 9
 
 # constants for reference
+# updated by normalize_table()
 SYNC_LEVEL = signal_table_composite[5, 0, 0]
 BLANK_LEVEL = signal_table_composite[5, 1, 0]
-
 WHITE_LEVEL = signal_table_composite[3, 0, 0]
 BLACK_LEVEL = signal_table_composite[1, 1, 0]
 

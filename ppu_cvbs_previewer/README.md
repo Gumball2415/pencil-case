@@ -19,6 +19,8 @@ it was difficult screenshotting Mesen all the time so i made this instead.
   - this means skipped dot rendering on odd frames, meaning that scanline 0 may
     be visibly truncated by one pixel.
 
+
+
 ```usage.txt
 usage: ppu_cvbs_preview.py [-h] [-d] [--plot_filters] [-cxp COLOR_CLOCK_PHASE]
                            [-raw] [-b BACKDROP] [-pal PALETTE]
@@ -88,7 +90,7 @@ options:
   -noskipdot            Turns off skipped dot rendering, generating three
                         chroma dot phases. Equivalent to rendering on 2C02s
 
-version 0.13.0
+version 0.14.0
 ```
 
 ## Requirements
