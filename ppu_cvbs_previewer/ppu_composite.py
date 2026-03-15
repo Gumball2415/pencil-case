@@ -83,10 +83,13 @@ def parse_argv(argv):
 
     return parser.parse_args(argv[1:])
 
-def normalize_table(min, max):
+def normalize_voltage(min, max):
     global signal_table_composite, SYNC_LEVEL, BLANK_LEVEL, BLACK_LEVEL, WHITE_LEVEL
     signal_table_composite -= min
     signal_table_composite /= abs(max - min)
+
+    phd -= min
+    phd /= abs(max - min)
 
     # update constants
     SYNC_LEVEL = signal_table_composite[5, 0, 0]
