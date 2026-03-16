@@ -1,5 +1,7 @@
 .obsidian
 .vscode*
 __pycache__*
+.env*
 debug*
-*.env/
+ignore*
+obj*

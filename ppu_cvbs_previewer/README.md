@@ -105,9 +105,9 @@ For python:
 
 ```requirements.txt
 matplotlib==3.10.8
-numpy==2.4.2
-Pillow==12.1.0
-scipy==1.17.0
+numpy==2.4.3
+Pillow==12.1.1
+scipy==1.17.1
 ```
 
 additionally, FFmpeg is required for animated .mp4 previews
@@ -123,7 +123,7 @@ additionally, FFmpeg is required for animated .mp4 previews
 python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot input/addie.bin
 ```
 
-![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.png)
+![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie_avg.png)
 
 - [3-phase dot crawl animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie.mp4)
 
@@ -133,7 +133,7 @@ python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot input/addie.b
 python3 ppu_cvbs_preview.py -frames 2 input/240pee.png
 ```
 
-![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.png)
+![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_avg.png)
 
 - [PLUGE animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee.mp4)
 
@@ -151,7 +151,7 @@ python3 ppu_cvbs_preview.py -ppu 2C07 -filt 1-line -b 00 input/240pee_2.png
 python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_2.png
 ```
 
-![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.png)
+![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC_avg.png)
 
 - [Comb filter test for NTSC animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC.mp4)
 
@@ -161,7 +161,7 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_2.png
 python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_3.png
 ```
 
-![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.png)
+![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb_avg.png)
 
 - [Sharpness test: Comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
 
@@ -169,7 +169,7 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_3.png
 python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 input/240pee_3.png
 ```
 
-![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.png)
+![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box_avg.png)
 
 - [Sharpness test: Box filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box.mp4)
 
@@ -179,15 +179,15 @@ python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 input/240pee_3.
 python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 input/dither.png
 ```
 
-![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_lanczos_gauss.png)
+![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_avg.png)
 
-- [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither.mp4)
+- [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir.mp4)
 
 ```sh
 python3 ppu_cvbs_preview.py -filt 1-line -frames 2 input/dither.png
 ```
 
-![Crosstalk test: 1-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_1line.png)
+![Crosstalk test: 1-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_1line_avg.png)
 
 - [Crosstalk test: 1-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_1line.mp4)
 
@@ -195,7 +195,7 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 input/dither.png
 python3 ppu_cvbs_preview.py -filt 2-line -frames 2 input/dither.png
 ```
 
-![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_comb_2line.png)
+![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line_avg.png)
 
 - [Crosstalk test: 2-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
 

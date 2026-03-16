@@ -189,7 +189,15 @@ from PIL import Image, ImagePalette
 
 def parse_raw_ppu_px(file: str):
     """
-    open raw ppu pixels and parse as ndarray
+    Open raw PPU pixels and parse as Numpy array for processing.
+
+    :param file: File path to raw uint16 PPU pixel binary
+    :type file: str
+
+
+
+    :return: 256x240 Numpy uint16 array
+    :rtype: np.ndarray
     """
     with open(file, mode="rb") as input:
         array = np.array(
@@ -199,6 +207,23 @@ def parse_raw_ppu_px(file: str):
         return np.reshape(array, (240, 256))
 
 def parse_indexed_png(file: str, palfile: str):
+    """
+    Open .png, quantize to palette, and parse as Numpy array for processing.
+
+    _extended_summary_
+
+    :param file: File path to .png. Must be 256x240.
+    :type file: str
+
+    :param palfile: File path to palette to quantize with.
+        Must be 192 bytes, or 64 RGB24 entries.
+    :type palfile: str
+
+
+
+    :return: 256x240 Numpy uint16 array
+    :rtype: np.ndarray
+    """
     with Image.open(file) as im:
         if im.size != (256, 240):
             print_err_quit("image is not 256x240.")
@@ -1275,6 +1300,8 @@ def decode_scanline(
     YUV_line = np.zeros((r.SCANLINE_SAMPLES, 3), dtype=np.float64)
 
     # separate luma and chroma
+    # TODO: provide non-compelementary filtering for luma and chroma
+    # ex: 2-line comb for luma and 1-line comb for chroma
     first_line = scanline == 0
     match decoding_filter:
         case "1-line":
