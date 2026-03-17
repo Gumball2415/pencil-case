@@ -120,7 +120,7 @@ additionally, FFmpeg is required for animated .mp4 previews
 ### 3-phase dot crawl
 
 ```sh
-python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot input/addie.bin
+python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot obj/addie.bin
 ```
 
 ![3-phase dot crawl](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/addie_avg.png)
@@ -130,7 +130,7 @@ python3 ppu_cvbs_preview.py -raw -filt 1-line -frames 3 -noskipdot input/addie.b
 ### PLUGE test
 
 ```sh
-python3 ppu_cvbs_preview.py -frames 2 input/240pee.png
+python3 ppu_cvbs_preview.py -frames 2 obj/240pee.png
 ```
 
 ![PLUGE](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_avg.png)
@@ -140,7 +140,7 @@ python3 ppu_cvbs_preview.py -frames 2 input/240pee.png
 ### Comb filter tests for PAL and NTSC
 
 ```sh
-python3 ppu_cvbs_preview.py -ppu 2C07 -filt 1-line -b 00 input/240pee_2.png
+python3 ppu_cvbs_preview.py -ppu 2C07 -filt 1-line -b 00 obj/240pee_2_PAL.png
 ```
 
 ![Comb filter test for PAL](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_PAL.png)
@@ -148,7 +148,7 @@ python3 ppu_cvbs_preview.py -ppu 2C07 -filt 1-line -b 00 input/240pee_2.png
 - no animation because PAL has static dot crawl
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_2.png
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 obj/240pee_2_NTSC.png
 ```
 
 ![Comb filter test for NTSC](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_2_NTSC_avg.png)
@@ -158,7 +158,7 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_2.png
 ### Sharpness tests for comb and box filter
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_3.png
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 obj/240pee_3_comb.png
 ```
 
 ![Sharpness test: Comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb_avg.png)
@@ -166,7 +166,7 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 -b 00 input/240pee_3.png
 - [Sharpness test: Comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_comb.mp4)
 
 ```sh
-python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 input/240pee_3.png
+python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 obj/240pee_3_box.png
 ```
 
 ![Sharpness test: Box filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/240pee_3_box_avg.png)
@@ -176,7 +176,7 @@ python3 ppu_cvbs_preview.py -filt compl -ftype box box -frames 2 input/240pee_3.
 ### Crosstalk tests
 
 ```sh
-python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 input/dither.png
+python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 obj/dither_fir.png
 ```
 
 ![Crosstalk test: FIR filter (Lanczos + Gaussian)](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir_avg.png)
@@ -184,7 +184,7 @@ python3 ppu_cvbs_preview.py -filt compl -ftype lanczos gauss -frames 2 input/dit
 - [Crosstalk test: FIR filter (Lanczos + Gaussian) animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_fir.mp4)
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 1-line -frames 2 input/dither.png
+python3 ppu_cvbs_preview.py -filt 1-line -frames 2 obj/dither_1line.png
 ```
 
 ![Crosstalk test: 1-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_1line_avg.png)
@@ -192,12 +192,30 @@ python3 ppu_cvbs_preview.py -filt 1-line -frames 2 input/dither.png
 - [Crosstalk test: 1-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_1line.mp4)
 
 ```sh
-python3 ppu_cvbs_preview.py -filt 2-line -frames 2 input/dither.png
+python3 ppu_cvbs_preview.py -filt 2-line -frames 2 obj/dither_2line.png
 ```
 
 ![Crosstalk test: 2-line comb filter](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line_avg.png)
 
 - [Crosstalk test: 2-line comb filter animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/dither_2line.mp4)
+
+### Full raster for PAL and NTSC
+
+This uses the PPU composite circle testcard found in [https://www.nesdev.org/wiki/NTSC_video#Emulating_in_C%2B%2B_code](the NESDev wiki) by Bisqwit.
+
+```sh
+python3 ppu_cvbs_preview.py -raw -full -filt 1-line -ppu 2C07 obj/bisqwit_testcard_pal.bin
+```
+
+![PAL PPU circle testcard](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_pal.png)
+
+```sh
+python3 ppu_cvbs_preview.py -raw -full -filt 1-line obj/bisqwit_testcard_ntsc.bin
+```
+
+![NTSC PPU circle testcard](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc.png)
+
+- [NTSC PPU circle testcard animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc.png)
 
 ## [License](../LICENSE_MIT-0.txt)
 
