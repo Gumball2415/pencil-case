@@ -98,7 +98,7 @@ def parse_argv(argv):
         choices=[
             "chroma",
             "luma",
-        ], 
+        ],
         help = "Disables chroma by setting UV to 0. Disables luma by setting Y\
             to 0.5.")
     parser.add_argument(
@@ -108,7 +108,7 @@ def parse_argv(argv):
             "compl",
             "1-line",
             "2-line",
-        ], 
+        ],
         default="compl",
         help = "Method for luma and chroma decoding.\
                 Default = \"compl\".")
@@ -238,7 +238,7 @@ def parse_indexed_png(file: str, palfile: str):
             with open(palfile, mode="rb") as master_pal:
                 palette_buf = np.transpose(
                     np.frombuffer(master_pal.read(), dtype=np.uint8))
-                
+
                 # ideally the palette would be 512 entries (1536 bytes)
                 # but .png only supports up to 256.
                 # so in practice the palette is 64 entries (192 bytes)
@@ -246,7 +246,7 @@ def parse_indexed_png(file: str, palfile: str):
                     print_err_quit(
                         f"palette size is not 192: got \
                             {len(palette_buf)} bytes.")
-                
+
                 nespal = ImagePalette.ImagePalette(
                     mode="RGB", palette=list(palette_buf))
                 imgpal = Image.new('P',(0,0))
@@ -366,7 +366,7 @@ def save_image(
     """
     Save output to .png
 
-    :param ppu_type: Composite PPU chip used for generating colors. See 
+    :param ppu_type: Composite PPU chip used for generating colors. See
         argparse arguments.
     :type ppu_type: str
 
@@ -403,7 +403,7 @@ def save_image(
     # scale image
         if (full_resolution or debug):
             imageout = imageout.resize(
-                (imageout.size[0], int(imageout.size[1]*r.PX_SAMPLES)), 
+                (imageout.size[0], int(imageout.size[1]*r.PX_SAMPLES)),
                 Image.Resampling.NEAREST)
         else:
             # crop to active video
@@ -414,7 +414,7 @@ def save_image(
                 (out_start+out_height//2)
             ))
             imageout = imageout.resize(
-                (out_width, imageout.size[1]), 
+                (out_width, imageout.size[1]),
                 resample=Image.Resampling.LANCZOS)
             imageout = imageout.resize(
                 (imageout.size[0], out_height), Image.Resampling.NEAREST)
@@ -452,7 +452,7 @@ def RC_lowpass(
         # impedance changes depending on DAC tap
         # we approximate this by using the raw signal's voltage
         # https://forums.nesdev.org/viewtopic.php?p=287241#p287241
-        # the phase shifts negative on higher levels according to 
+        # the phase shifts negative on higher levels according to
         # https://forums.nesdev.org/viewtopic.php?p=186297#p186297
         v_prev_norm = signal[i] / ppu.WHITE_LEVEL
 
@@ -482,7 +482,7 @@ def QAM_phase(signal: np.ndarray, sc_samples: int):
     t = np.arange(sc_samples)
     u = np.sin(2*np.pi*t / sc_samples)
     v = np.cos(2*np.pi*t / sc_samples)
-    
+
     tilecount = int(np.ceil(buf_size/sc_samples))
     u = np.tile(u, tilecount)[:buf_size]
     v = np.tile(v, tilecount)[:buf_size]
@@ -502,17 +502,17 @@ def configure_filters(
     Configures the RasterTimings object for encoding and filter parameters
     for decoding.
 
-    Depending on the PPU type, the RasterTimings will be initialized with the 
+    Depending on the PPU type, the RasterTimings will be initialized with the
     proper raster timing constants and optionally the backdrop color.
 
-    Depending on the filter type, an FIR kernel or IIR filter 
-    numerator/denominator will be generated for complementary luma-chroma 
+    Depending on the filter type, an FIR kernel or IIR filter
+    numerator/denominator will be generated for complementary luma-chroma
     separation and QAM demodulation lowpassing. Otherwise they are initialized with `None`.
 
-    Optionally, for debugging and developing filters, the filter's kernels (if 
+    Optionally, for debugging and developing filters, the filter's kernels (if
     FIR) and frequency response may be plotted with Matplotlib.
 
-    :param ppu_type: Composite PPU chip used for generating colors. See 
+    :param ppu_type: Composite PPU chip used for generating colors. See
         argparse arguments.
     :type ppu_type: str
 
@@ -529,8 +529,8 @@ def configure_filters(
 
 
 
-    :return: A tuple of filtering parameters, the sampling time, and the 
-        RasterTimings object. You may choose to destructure the tuple for 
+    :return: A tuple of filtering parameters, the sampling time, and the
+        RasterTimings object. You may choose to destructure the tuple for
         convenience.
         `(
             luma_fir,
@@ -844,7 +844,7 @@ def encode_blank_syncs(
 
 
 
-    :return: A Numpy array of voltage samples in a single scanline, along with 
+    :return: A Numpy array of voltage samples in a single scanline, along with
         the next accumulated phase.
     :rtype: (np.ndarray, int)
     """
@@ -908,7 +908,7 @@ def encode_scanline(
     """
     Encodes one line of raw ppu pixels. returns raw voltage and next phase.
 
-    :param ppu_type: Composite PPU chip used for generating colors. See 
+    :param ppu_type: Composite PPU chip used for generating colors. See
         argparse arguments.
     :type ppu_type: str
 
@@ -932,7 +932,7 @@ def encode_scanline(
 
 
 
-    :return: A Numpy array of voltage samples in a single scanline, along with 
+    :return: A Numpy array of voltage samples in a single scanline, along with
         the next accumulated phase.
     :rtype: (np.ndarray, int)
     """
@@ -940,7 +940,7 @@ def encode_scanline(
     raw_ppu = np.full(r.SCANLINE_PIXELS, ppu.BLANK_INDEX, dtype=np.int16)
     cvbs_ppu = np.full(
         r.SCANLINE_SAMPLES-int(skip_dot), ppu.SYNC_LEVEL, dtype=np.float64)
-    
+
     raw_ppu[0:r.HSYNC] = ppu.SYNC_INDEX
     raw_ppu[r.HSYNC:] = ppu.BLANK_INDEX
     raw_ppu[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
@@ -1228,7 +1228,7 @@ def yc_comb_2line(
     # rotate chroma line to account for next line's phase shift
     prev_line[:, 1] = np.roll(prev_line[:,0], r.NEXT_SHIFT//2)
     prev_line[:, 0] = np.roll(cvbs_ppu, r.NEXT_SHIFT//2)
-    
+
     return y_line, u_line, v_line, prev_line
 
 def decode_scanline(
@@ -1250,7 +1250,7 @@ def decode_scanline(
     :param cvbs_ppu: Composite signal scanline input
     :type cvbs_ppu: np.ndarray
 
-    :param ppu_type: Composite PPU chip used for generating colors. See 
+    :param ppu_type: Composite PPU chip used for generating colors. See
         argparse arguments.
     :type ppu_type: str
 
@@ -1274,7 +1274,7 @@ def decode_scanline(
         May be `None`.
     :type a_chroma: np.ndarray, optional
 
-    :param decoding_filter: Method for luma and chroma decoding. See argparse   
+    :param decoding_filter: Method for luma and chroma decoding. See argparse
         arguments.
     :type decoding_filter: str
 
@@ -1422,11 +1422,11 @@ def encode_frame(raw_ppu,
     ):
 
     """
-    Encodes a (240,256) array of uint16 raw PPU pixels into an composite 
-    filtered RGB output image. Also outputs the next starting phase for the 
+    Encodes a (240,256) array of uint16 raw PPU pixels into an composite
+    filtered RGB output image. Also outputs the next starting phase for the
     next frame.
 
-    :param ppu_type: Composite PPU chip used for generating colors. See 
+    :param ppu_type: Composite PPU chip used for generating colors. See
         argparse arguments.
     :type ppu_type: str
 
@@ -1436,7 +1436,7 @@ def encode_frame(raw_ppu,
     :param phd: Phase distortion amount. See argparse arguments.
     :type phd: float
 
-    :param filter_config: Filter configuration generated by 
+    :param filter_config: Filter configuration generated by
         `configure_filters()`.
         `(
             luma_fir,
@@ -1455,7 +1455,7 @@ def encode_frame(raw_ppu,
         float
     )
 
-    :param decoding_filter: Method for luma and chroma decoding. See argparse   
+    :param decoding_filter: Method for luma and chroma decoding. See argparse
         arguments.
     :type decoding_filter: str
 
@@ -1465,7 +1465,7 @@ def encode_frame(raw_ppu,
     :param debug: Enable debug messages and options, defaults to False
     :type debug: bool, optional
 
-    :param disable_yc: Disables chroma by setting UV to 0. Disables luma by 
+    :param disable_yc: Disables chroma by setting UV to 0. Disables luma by
         setting Y to 0.5. Defaults to `None`.
     :type disable_yc: str, optional
 
@@ -1623,7 +1623,7 @@ def main(argv=None):
 
     # compensate for vsync and blank
     phase = (phase - r.PRE_BLANK_AREA*r.SCANLINE_SAMPLES) % r.SC_SAMPLES
-    
+
     full_signal = []
 
     image_filename = os.path.splitext(args.input)[0]

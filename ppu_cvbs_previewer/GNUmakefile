@@ -77,9 +77,11 @@ ${exmdir}/%.mp4: ${objdir}/%_ppucvbs_*.png
 	-c:v libx264 \
 		-threads 10 \
 		-crf 18 \
+		-profile:v high \
+		-level 4.1 \
+		-pix_fmt yuv420p \
 		-preset veryslow \
 		-movflags faststart \
-		-pix_fmt yuv420p \
 		-color_range 1 \
 		-colorspace bt709 \
 		-color_primaries bt709 \

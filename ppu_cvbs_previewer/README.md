@@ -201,7 +201,7 @@ python3 ppu_cvbs_preview.py -filt 2-line -frames 2 obj/dither_2line.png
 
 ### Full raster for PAL and NTSC
 
-This uses the PPU composite circle testcard found in [https://www.nesdev.org/wiki/NTSC_video#Emulating_in_C%2B%2B_code](the NESDev wiki) by Bisqwit.
+This uses the PPU composite circle testcard found in [the NESDev wiki](https://www.nesdev.org/wiki/NTSC_video#Emulating_in_C%2B%2B_code) by Bisqwit.
 
 ```sh
 python3 ppu_cvbs_preview.py -raw -full -filt 1-line -ppu 2C07 obj/bisqwit_testcard_pal.bin
@@ -213,9 +213,9 @@ python3 ppu_cvbs_preview.py -raw -full -filt 1-line -ppu 2C07 obj/bisqwit_testca
 python3 ppu_cvbs_preview.py -raw -full -filt 1-line obj/bisqwit_testcard_ntsc.bin
 ```
 
-![NTSC PPU circle testcard](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc.png)
+![NTSC PPU circle testcard](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc_avg.png)
 
-- [NTSC PPU circle testcard animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc.png)
+- [NTSC PPU circle testcard animated](https://raw.githubusercontent.com/Gumball2415/pencil-case/refs/heads/main/ppu_cvbs_previewer/docs/bisqwit_testcard_ntsc.mp4)
 
 ## [License](../LICENSE_MIT-0.txt)
 
