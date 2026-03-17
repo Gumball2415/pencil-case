@@ -73,12 +73,45 @@ ${exmdir}/%.mp4: ${objdir}/%_ppucvbs_*.png
 	ffmpeg -framerate 60 -y -hwaccel auto -pattern_type glob \
 	-i '$<' \
 	-t 2 \
-	-threads 10 \
 	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
 	-c:v libx264 \
-		-crf 0 \
+		-threads 10 \
+		-crf 18 \
 		-preset veryslow \
 		-movflags faststart \
+		-pix_fmt yuv420p \
+		-color_range 1 \
+		-colorspace bt709 \
+		-color_primaries bt709 \
+		-color_trc iec61966-2-1 \
+	$@
+
+# TODO: lossless FFV1
+${objdir}/%.log: ${objdir}/%_ppucvbs_*.png
+	ffmpeg -framerate 60 -y -hwaccel auto -pattern_type glob \
+	-i '$<' \
+	-t 2 \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-c:v ffv1 \
+		-level 3 \
+		-pass 1 \
+		-passlogfile '$(basename $@)' \
+	-f nut /dev/null
+${exmdir}/%.mkv: ${objdir}/%_ppucvbs_*.png ${objdir}/%.log
+	ffmpeg -framerate 60 -y -hwaccel auto -pattern_type glob \
+	-i '$<' \
+	-t 2 \
+	-vf "[in]loop=loop=-1:size=3:start=0[out]" \
+	-c:v ffv1 \
+		-level 3 \
+		-pass 2 \
+		-passlogfile $(basename $(word 2,$^)) \
+		-threads 10 \
+		-coder 2 \
+		-context 1 \
+		-g 1 \
+		-slicecrc 1 \
+		-flags +ilme+ildct \
 		-pix_fmt yuv420p \
 		-color_range 1 \
 		-colorspace bt709 \
