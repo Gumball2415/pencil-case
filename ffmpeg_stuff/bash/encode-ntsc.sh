@@ -1,4 +1,6 @@
+#!/bin/bash
 # vhs-decode and ld-decode suite must be in path
+# usage: ./encode-ntsc.sh <input_video> <decoder_type>
 echo "$1"
 
 real="$(realpath "$1")"
@@ -6,6 +8,11 @@ echo $real
 
 fullfilepath="${real%.*}"
 echo $fullfilepath
+
+if [$2 != ""]
+then
+    $2="ntsc2d"
+fi
 
 ffmpeg -hwaccel auto -i "$real" -an -vf \
     "scale=758:480:flags=lanczos+accurate_rnd+full_chroma_int+bitexact,
@@ -26,7 +33,7 @@ ffmpeg -hwaccel auto -i "$real" -an -vf \
 
 
 ld-chroma-decoder --input-json "${fullfilepath}_encode.tbc.json"\
-    --decoder ntsc2d -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
+    --decoder $2 -t 10 -p y4m "${fullfilepath}_encode.tbc" - \
     | ffmpeg -y -hwaccel auto -i - -i "$real" \
         -c:a copy \
         -c:v ffv1 \
