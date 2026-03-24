@@ -18,7 +18,7 @@ endif
 
 program := ./ppu_cvbs_preview.py
 
-.PHONY: clean info examples all
+.PHONY: clean all info examples usage.txt requirements.txt
 
 .INTERMEDIATE:  ${objdir}
 

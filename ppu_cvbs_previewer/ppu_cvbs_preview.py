@@ -21,7 +21,7 @@ import sys, os
 import argparse
 import numpy as np
 
-VERSION = "0.15.0"
+VERSION = "0.16.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -296,8 +296,8 @@ class RasterTimings:
 
     NEXT_SHIFT: int = field(init=False)
 
-    BEFORE_ACTIVE: int = field(init=False)
-    AFTER_ACTIVE: int = field(init=False)
+    BEFORE_RENDER: int = field(init=False)
+    AFTER_RENDER: int = field(init=False)
 
     BEFORE_VID: int = field(init=False)
     AFTER_VID: int = field(init=False)
@@ -311,7 +311,6 @@ class RasterTimings:
     SCANLINE_SAMPLES: int = field(init=False)
 
     # vertical timing constants
-    FIELD_SCANLINES: int
     VSYNC_LINES: int
     PRERENDER_BLANK_LINES: int
     RENDER_LINES: int
@@ -324,10 +323,21 @@ class RasterTimings:
     POST_RENDER_AREA: int = field(init=False)
     POST_BLANK_AREA: int = field(init=False)
 
+    FIELD_SCANLINES: int = field(init=False)
+
+    # for cropping, in final samples, NOT PPU pixels
+    BEFORE_ACTIVE: int = field(init=False)
+    ACTIVE_WIDTH: int
+    AFTER_ACTIVE: int = field(init=False)
+
+    ACTIVE_LINE_START: int
+    ACTIVE_LINES: int
+    ACTIVE_LINE_END: int = field(init=False)
+
     def __post_init__(s):
-        s.BEFORE_ACTIVE = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B +\
+        s.BEFORE_RENDER = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B +\
             s.PULSE + s.L_BORDER
-        s.AFTER_ACTIVE = s.BEFORE_ACTIVE + s.ACTIVE
+        s.AFTER_RENDER = s.BEFORE_RENDER + s.ACTIVE
         s.BEFORE_VID = s.HSYNC + s.B_PORCH_A + s.CBURST + s.B_PORCH_B
         s.AFTER_VID = s.BEFORE_VID + s.PULSE + s.L_BORDER + s.ACTIVE +\
             s.R_BORDER
@@ -350,9 +360,12 @@ class RasterTimings:
         s.ACTIVE_AREA = s.PRE_BLANK_AREA + s.RENDER_LINES
         s.POST_RENDER_AREA = s.ACTIVE_AREA + s.POSTRENDER_BD_LINES
         s.POST_BLANK_AREA = s.POST_RENDER_AREA+s.POSTRENDER_BLANK_LINES
+        s.FIELD_SCANLINES = s.POST_BLANK_AREA
 
-        if s.FIELD_SCANLINES != s.POST_BLANK_AREA:
-            print_err_quit(f"Specified field scanlines {s.FIELD_SCANLINES} is not equal with total scanlines {s.POST_BLANK_AREA}")
+        s.BEFORE_ACTIVE = s.BEFORE_VID * s.PX_SAMPLES
+        s.AFTER_ACTIVE = s.BEFORE_ACTIVE + s.ACTIVE_WIDTH
+
+        s.ACTIVE_LINE_END = s.ACTIVE_LINE_START + s.ACTIVE_LINES
 
 def save_image(
         ppu_type: str,
@@ -389,16 +402,12 @@ def save_image(
     :param debug: Enable debug messages and options, defaults to False
     :type debug: bool, optional
     """
+    out_start = r.ACTIVE_LINE_START
+    out_height = r.ACTIVE_LINES
     if ppu_type == "2C07":
-        # 26 lines after vsync
-        # Table 3, BT.1700 (2005)
-        out_start = r.VSYNC_AREA+26
         out_width=768
-        out_height=576
     else:
-        out_start = r.PRE_BLANK_AREA
         out_width=640
-        out_height=480
     with Image.fromarray(np.ubyte(np.around(out * 255))) as imageout:
     # scale image
         if (full_resolution or debug):
@@ -408,16 +417,16 @@ def save_image(
         else:
             # crop to active video
             imageout = imageout.crop((
-                r.BEFORE_VID*r.PX_SAMPLES,
+                r.BEFORE_ACTIVE,
                 out_start,
-                r.AFTER_VID*r.PX_SAMPLES,
-                (out_start+out_height//2)
+                r.AFTER_ACTIVE,
+                (out_start+out_height)
             ))
             imageout = imageout.resize(
                 (out_width, imageout.size[1]),
                 resample=Image.Resampling.LANCZOS)
             imageout = imageout.resize(
-                (imageout.size[0], out_height), Image.Resampling.NEAREST)
+                (imageout.size[0], out_height*2), Image.Resampling.NEAREST)
         imageout.save(f"{input_name}_ppucvbs_ph_{phases}.png")
 
 import ppu_composite as ppu
@@ -565,9 +574,9 @@ def configure_filters(
                 HSYNC = 25,
                 B_PORCH_A = 4,
                 CBURST = 15,
-                B_PORCH_B = 5,
+                B_PORCH_B = 12,
                 PULSE = 0,
-                L_BORDER = 18,
+                L_BORDER = 11,
                 ACTIVE = 256,
                 R_BORDER = 9,
                 F_PORCH = 9,
@@ -575,13 +584,19 @@ def configure_filters(
                 PX_SAMPLES = 10,
                 SC_SAMPLES = 12,
                 BACKDROP = ppu.BLANK_INDEX,
-                FIELD_SCANLINES = 312,
                 VBLANK_PULSE=320,
                 VSYNC_LINES=3,
                 PRERENDER_BLANK_LINES=39,
                 RENDER_LINES=240,
                 POSTRENDER_BD_LINES=0,
                 POSTRENDER_BLANK_LINES=30,
+                # based on Rec. ITU-R BT.1700, Table 2 for 625 PAL
+                #   f_H - (b + c)
+                # = 64us - (10.5+1.2)us
+                # approx. 2783 samples
+                ACTIVE_WIDTH=int(round(52.3e-6*X_main*2)),
+                ACTIVE_LINE_START=25-2, # symbol j - symbol l rounded down
+                ACTIVE_LINES=287,
             )
         case "2C02":
             X_main = 236.25e6 / 11
@@ -599,13 +614,22 @@ def configure_filters(
                 PX_SAMPLES = 8,
                 SC_SAMPLES = 12,
                 BACKDROP = backdrop,
-                FIELD_SCANLINES = 262,
                 VBLANK_PULSE=318,
                 VSYNC_LINES=3,
                 PRERENDER_BLANK_LINES=14,
                 RENDER_LINES=240,
                 POSTRENDER_BD_LINES=2,
                 POSTRENDER_BLANK_LINES=3,
+                # based on SMPTE 170M 2004, Figure 7
+                # f_H - (h.ref to blank end - blank start to h.ref)
+                # (1/(2*315e6/88/455)-(9.2+1.5)*1e-6)*PPU_Fs
+                # = approx. 2270 samples
+                ACTIVE_WIDTH=int(round(
+                    (1/((2*315e6/88)/455)-(9.2+1.5)*1e-6)*X_main*2
+                )),
+                # start on first rendered scanline instead
+                ACTIVE_LINE_START=17,
+                ACTIVE_LINES=240,
             )
         case _:
             print_err_quit("Unknown PPU type")
@@ -864,7 +888,7 @@ def encode_blank_syncs(
         blank = np.full(r.SCANLINE_PIXELS, ppu.BLANK_INDEX, dtype=np.int16)
         blank[:r.HSYNC] = ppu.SYNC_INDEX
         blank[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
-        blank[r.BEFORE_VID:r.BEFORE_ACTIVE] = ppu.BLANK_INDEX
+        blank[r.BEFORE_VID:r.BEFORE_RENDER] = ppu.BLANK_INDEX
 
         cvbs_ppu, scanline_phase = encode_blank_scanline(
             scanline_phase, blank, r, alternate_line)
@@ -889,7 +913,7 @@ def encode_blank_syncs(
         blank = np.full(r.SCANLINE_PIXELS, ppu.BLANK_INDEX, dtype=np.int16)
         blank[:r.HSYNC] = ppu.SYNC_INDEX
         blank[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
-        blank[r.BEFORE_VID:r.BEFORE_ACTIVE] = ppu.BLANK_INDEX
+        blank[r.BEFORE_VID:r.BEFORE_RENDER] = ppu.BLANK_INDEX
 
         cvbs_ppu, scanline_phase = encode_blank_scanline(
             scanline_phase, blank, r, alternate_line)
@@ -944,15 +968,15 @@ def encode_scanline(
     raw_ppu[0:r.HSYNC] = ppu.SYNC_INDEX
     raw_ppu[r.HSYNC:] = ppu.BLANK_INDEX
     raw_ppu[r.BEFORE_CBURST:r.AFTER_CBURST] = ppu.COLORBURST_INDEX
-    raw_ppu[r.BEFORE_VID:r.BEFORE_ACTIVE] = r.BACKDROP
+    raw_ppu[r.BEFORE_VID:r.BEFORE_RENDER] = r.BACKDROP
 
     # PAL crop
     if ppu_type =="2C07":
         if scanline != 0:
-            raw_ppu[r.BEFORE_ACTIVE+2:r.AFTER_ACTIVE-2] = data[2 :-2]
+            raw_ppu[r.BEFORE_RENDER+2:r.AFTER_RENDER-2] = data[2 :-2]
     else:
-        raw_ppu[r.BEFORE_ACTIVE:r.AFTER_ACTIVE] = data
-    raw_ppu[r.AFTER_ACTIVE:r.AFTER_VID] = r.BACKDROP
+        raw_ppu[r.BEFORE_RENDER:r.AFTER_RENDER] = data
+    raw_ppu[r.AFTER_RENDER:r.AFTER_VID] = r.BACKDROP
     if r.PULSE != 0:
         raw_ppu[r.PULSE_INDEX] &= 0xF0
     scanline_phase = starting_phase
@@ -967,7 +991,7 @@ def encode_scanline(
     for pixel in range(raw_ppu.shape[0]):
         # dot skip
         # dot 340, scanline 0
-        if pixel == (r.BEFORE_ACTIVE - 1) and skip_dot:
+        if pixel == (r.BEFORE_RENDER - 1) and skip_dot:
             continue
 
         for sample in range(r.PX_SAMPLES):
