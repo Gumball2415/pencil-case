@@ -9,8 +9,7 @@ echo $real
 fullfilepath="${real%.*}"
 echo $fullfilepath
 
-if [$2 != ""]
-then
+if test $2 -eq ""; then
     $2="ntsc2d"
 fi
 
