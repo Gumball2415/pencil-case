@@ -22,7 +22,7 @@ import argparse
 from PIL import Image
 import numpy as np
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 def parse_argv(argv):
     parser=argparse.ArgumentParser(
@@ -39,26 +39,27 @@ def parse_argv(argv):
         help="Input full_palette screenshot, index matched by input palette.\
             Output will be saved as \"input.pal\".",
         type=str)
+    parser.add_argument(
+        "grid_start",
+        help="Top-left coordinate of starting grid cell (X, Y).",
+        nargs=2,
+        type=int)
+    parser.add_argument(
+        "grid_size",
+        help="Grid dimensions (X, Y).",
+        nargs=2,
+        type=int)
+    parser.add_argument(
+        "cell_size",
+        help="Cell dimensions (X, Y).",
+        nargs=2,
+        type=int)
+    parser.add_argument(
+        "crop",
+        help="How much to crop into the cell (Top, Left, Right, Bottom).",
+        nargs=4,
+        type=int)
     return parser.parse_args(argv[1:])
-
-
-# top left of starting square
-GRID_START_X = 51
-GRID_START_Y = 18
-
-# cell dimensions
-SIZE_CELL_X = 45
-SIZE_CELL_Y = 14
-
-# grid dimensions
-SIZE_GRID_X = 14
-SIZE_GRID_Y = 32
-
-# crop to solid color
-CROP_TOP = 2
-CROP_LEFT = 8
-CROP_RIGHT = 8
-CROP_BOTTOM = 2
 
 def crop_swatch(
     fulpal_im: Image.Image,
@@ -67,6 +68,7 @@ def crop_swatch(
     grid_size: tuple[int, int],
     cell_size: tuple[int, int],
     crop: tuple[int, int, int, int],
+    debug: bool
 ):
     """
     Given an index and grid attributes, crop a solid swatch of color and return
@@ -84,6 +86,8 @@ def crop_swatch(
     :type cell_size: tuple[int, int]
     :param crop: How much to crop into the cell (Top, Left, Right, Bottom)
     :type crop: tuple[int, int, int, int]
+    :param debug: Enable debug output
+    :type debug: bool
 
     :return: Cropped swatch image
     :rtype: Image.Image
@@ -96,7 +100,8 @@ def crop_swatch(
     bottom = ((index_y+1)*cell_size[1]) + grid_start[1] - crop[3]
 
     swatch = fulpal_im.crop((left, top, right, bottom))
-    swatch.save(f"debug/swatch_{index}.png")
+    if debug:
+        swatch.save(os.path.join("debug", f"swatch_{index}.png"))
 
     swatch = np.asarray(swatch, dtype=np.float64)
     swatch /= 255.
@@ -108,21 +113,22 @@ def main(argv=None):
     args = parse_argv(argv or sys.argv)
     fulpal_im = Image.open(args.input)
 
-    colors = np.zeros((SIZE_GRID_X, SIZE_GRID_Y, 3), dtype=np.float64)
+    colors = np.zeros((args.grid_size[0], args.grid_size[1], 3), dtype=np.float64)
 
-    for index in range(SIZE_GRID_X*SIZE_GRID_Y):
+    for index in range(args.grid_size[0]*args.grid_size[1]):
         # crop a grid square and get the average color
         swatch = crop_swatch(
             fulpal_im,
             index,
-            (GRID_START_X, GRID_START_Y),
-            (SIZE_GRID_X, SIZE_GRID_Y),
-            (SIZE_CELL_X, SIZE_CELL_Y),
-            (CROP_TOP, CROP_LEFT, CROP_RIGHT, CROP_BOTTOM)
+            (args.grid_start[0], args.grid_start[1]),
+            (args.grid_size[0], args.grid_size[1]),
+            (args.cell_size[0], args.cell_size[1]),
+            (args.crop[0], args.crop[1], args.crop[2], args.crop[3]),
+            args.debug
         )
 
-        index_x = index % SIZE_GRID_X
-        index_y = int(index / SIZE_GRID_X)
+        index_x = index % args.grid_size[0]
+        index_y = int(index / args.grid_size[0])
         colors[index_x, index_y] = swatch
 
     # TODO: different sort modes depending on full_palette
