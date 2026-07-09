@@ -5,3 +5,4 @@ __pycache__*
 debug*
 ignore*
 obj*
+full_palette_picker/.mint/
