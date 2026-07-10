@@ -152,5 +152,8 @@ def main(argv=None):
     with open((os.path.splitext(args.input)[0] + ".pal"), mode="wb") as palfile:
         palfile.write(np.uint8(np.around(fulpal*0xFF)))
 
+    with open((os.path.splitext(args.input)[0] + ".fpal"), mode="wb") as fpalfile:
+        fpalfile.write(fulpal)
+
 if __name__=='__main__':
     main(sys.argv)
